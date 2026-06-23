@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: page('Bollinger Bands', ~{::main-content})}">
+<body>
+<th:block th:fragment="main-content">
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a th:href="@{/learn}">Học chứng khoán</a></li>
+        <li class="breadcrumb-item active">Bollinger Bands</li>
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+<div class="col-lg-8">
+
+<h1 class="h2 fw-bold mb-1">Bollinger Bands</h1>
+<p class="text-muted mb-4">Dải biến động giá dựa trên độ lệch chuẩn</p>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Bollinger Bands là gì?</h5>
+        <p>Bollinger Bands gồm <strong>3 đường</strong> bao quanh biểu đồ giá, tạo thành một "dải" thể hiện
+        mức độ biến động (volatility) của cổ phiếu.</p>
+        <div class="bg-light rounded-3 p-3 font-monospace small">
+            <div class="text-danger">Dải trên = MA20 + (2 × Độ lệch chuẩn)</div>
+            <div class="text-primary mt-1">Đường giữa = MA20 (trung bình 20 phiên)</div>
+            <div class="text-success mt-1">Dải dưới = MA20 − (2 × Độ lệch chuẩn)</div>
+        </div>
+    </div>
+</div>
+
+<h5 class="fw-bold mb-3">Cách sử dụng</h5>
+<div class="row g-3 mb-4">
+    <div class="col-sm-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <p class="fw-bold text-success mb-2">
+                    <i class="bi bi-arrow-down-circle me-1"></i>Giá chạm dải dưới
+                </p>
+                <p class="small text-muted mb-0">
+                    Giá đã giảm đến vùng có xác suất thống kê cao là sẽ quay đầu.<br>
+                    → Nhiều nhà đầu tư xem xét mua tại đây.
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <p class="fw-bold text-danger mb-2">
+                    <i class="bi bi-arrow-up-circle me-1"></i>Giá chạm dải trên
+                </p>
+                <p class="small text-muted mb-0">
+                    Giá đang ở vùng "nóng", có thể sắp điều chỉnh.<br>
+                    → Cần thận trọng, có thể chốt lời một phần.
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-body">
+                <p class="fw-bold mb-2">
+                    <i class="bi bi-arrows-collapse me-1"></i>Dải thu hẹp (Squeeze)
+                </p>
+                <p class="small text-muted mb-0">
+                    Khi hai dải tiến lại gần nhau, thị trường đang tích lũy năng lượng.
+                    Thường sẽ có một đợt biến động mạnh tiếp theo — nhưng không rõ hướng lên hay xuống.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-warning border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">
+            <i class="bi bi-lightbulb text-warning me-2"></i>Kết hợp 3 chỉ số
+        </h5>
+        <p>Website này sử dụng <strong>RSI + MACD + Bollinger Bands</strong> cùng lúc để tính điểm tín hiệu:</p>
+        <ul class="text-muted">
+            <li>RSI quá bán (<30) → cộng điểm BUY</li>
+            <li>MACD cắt lên signal → cộng điểm BUY</li>
+            <li>Giá chạm dải dưới BB → cộng điểm BUY</li>
+            <li>Giá trên MA20 và MA50 → cộng điểm BUY</li>
+        </ul>
+        <p class="mb-0 text-muted small">Điểm ≥ 3 → <span class="badge bg-success">BUY</span> &nbsp;
+        Điểm ≤ -3 → <span class="badge bg-danger">SELL</span> &nbsp;
+        Còn lại → <span class="badge bg-warning text-dark">HOLD</span></p>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between">
+    <a th:href="@{/learn/macd}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Bài trước: MACD
+    </a>
+    <a th:href="@{/learn}" class="btn btn-primary">
+        Về trang học <i class="bi bi-house ms-1"></i>
+    </a>
+</div>
+
+</div>
+</div>
+
+</th:block>
+</body>
+</html>

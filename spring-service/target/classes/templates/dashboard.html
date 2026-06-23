@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: page('Dashboard', ~{::main-content})}">
+<body>
+<th:block th:fragment="main-content">
+
+<!-- Python service warning -->
+<div th:unless="${pythonUp}" class="alert alert-warning border-0 rounded-3 mb-4">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <strong>Python service chưa chạy.</strong>
+    Dữ liệu realtime sẽ không có. Chạy lệnh:
+    <code class="ms-2">cd python-service && uvicorn main:app --port 8000</code>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 fw-bold mb-0">Dashboard</h1>
+        <small class="text-muted">Tín hiệu kỹ thuật thị trường chứng khoán Việt Nam</small>
+    </div>
+</div>
+
+<!-- Signal summary -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm border-start border-success border-3">
+            <div class="card-body py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted small mb-1">Tín hiệu MUA</p>
+                        <h3 class="fw-bold text-success mb-0" th:text="${buyCount}">0</h3>
+                    </div>
+                    <i class="bi bi-arrow-up-circle-fill text-success fs-2 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm border-start border-warning border-3">
+            <div class="card-body py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted small mb-1">Tín hiệu GIỮ</p>
+                        <h3 class="fw-bold text-warning mb-0" th:text="${holdCount}">0</h3>
+                    </div>
+                    <i class="bi bi-dash-circle-fill text-warning fs-2 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm border-start border-danger border-3">
+            <div class="card-body py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted small mb-1">Tín hiệu BÁN</p>
+                        <h3 class="fw-bold text-danger mb-0" th:text="${sellCount}">0</h3>
+                    </div>
+                    <i class="bi bi-arrow-down-circle-fill text-danger fs-2 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Watchlist signals table -->
+<div class="card shadow-sm border-0">
+    <div class="card-header bg-white fw-semibold border-bottom">
+        <i class="bi bi-list-stars me-2"></i>Watchlist — Tín hiệu kỹ thuật
+    </div>
+    <div class="card-body p-0">
+
+        <!-- Chưa có dữ liệu -->
+        <div th:if="${signals.empty}" class="p-5 text-center text-muted">
+            <i class="bi bi-hourglass-split display-4 d-block mb-3 opacity-50"></i>
+            <p class="mb-1">Chưa có dữ liệu tín hiệu.</p>
+            <small>Đảm bảo Python service đang chạy, dữ liệu sẽ được tải khi khởi động.</small>
+        </div>
+
+        <div class="table-responsive" th:unless="${signals.empty}">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th>Mã CK</th>
+                    <th class="text-end">Giá</th>
+                    <th class="text-center">Tín hiệu</th>
+                    <th class="text-center">RSI</th>
+                    <th class="text-center">MACD</th>
+                    <th class="text-center">MA20</th>
+                    <th>Cập nhật</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="sig : ${signals}">
+                    <td class="fw-bold fs-6" th:text="${sig.symbol}"></td>
+                    <td class="text-end fw-semibold"
+                        th:text="${sig.currentPrice != null} ? ${#numbers.formatDecimal(sig.currentPrice, 1, 2)} : '—'">
+                    </td>
+                    <td class="text-center">
+                        <span class="badge rounded-pill px-3 py-2"
+                              th:classappend="'bg-' + ${sig.signalColor}"
+                              th:text="${sig.signal}">
+                        </span>
+                    </td>
+                    <td class="text-center">
+                        <span th:if="${sig.rsi != null}"
+                              th:classappend="${sig.rsi < 30} ? 'text-success fw-bold' : (${sig.rsi > 70} ? 'text-danger fw-bold' : 'text-muted')"
+                              th:text="${#numbers.formatDecimal(sig.rsi, 1, 1)}">
+                        </span>
+                        <span th:unless="${sig.rsi != null}" class="text-muted">—</span>
+                    </td>
+                    <td class="text-center">
+                        <span th:if="${sig.macd != null}"
+                              th:classappend="${sig.macd > 0} ? 'text-success' : 'text-danger'"
+                              th:text="${#numbers.formatDecimal(sig.macd, 1, 3)}">
+                        </span>
+                        <span th:unless="${sig.macd != null}" class="text-muted">—</span>
+                    </td>
+                    <td class="text-center text-muted small"
+                        th:text="${sig.ma20 != null} ? ${#numbers.formatDecimal(sig.ma20, 1, 2)} : '—'">
+                    </td>
+                    <td class="text-muted small"
+                        th:text="${#temporals.format(sig.calculatedAt, 'dd/MM HH:mm')}">
+                    </td>
+                    <td>
+                        <a th:href="@{/stocks/{s}(s=${sig.symbol})}"
+                           class="btn btn-sm btn-outline-primary">
+                            Chi tiết <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Quick access: Cổ phiếu phổ biến -->
+<div class="mt-4">
+    <p class="text-muted small mb-2">Truy cập nhanh:</p>
+    <div class="d-flex flex-wrap gap-2">
+        <a th:each="sym : ${watchlist}"
+           th:href="@{/stocks/{s}(s=${sym.trim()})}"
+           class="btn btn-sm btn-outline-secondary"
+           th:text="${sym.trim()}">
+        </a>
+    </div>
+</div>
+
+</th:block>
+</body>
+</html>
