@@ -76,7 +76,7 @@ jobs:
 
   # ══════════════════════════════════════════════════════
   # JOB 3: Code quality summary
-  # (run after job 1 and job 2 pass)
+  # (chạy sau khi cả 2 job trên pass)
   # ══════════════════════════════════════════════════════
   summary:
     name: Build Summary
@@ -86,6 +86,6 @@ jobs:
     steps:
       - name: All checks passed
         run: |
-          echo "Python service: OK"
-          echo "Spring Boot build: OK"
-          echo "Ready to deploy"
+          echo "✅ Python service: OK"
+          echo "✅ Spring Boot build: OK"
+          echo "✅ Ready to deploy"

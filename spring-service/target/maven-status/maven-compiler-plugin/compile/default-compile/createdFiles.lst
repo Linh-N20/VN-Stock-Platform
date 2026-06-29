@@ -1,8 +1,10 @@
-com\stockplatform\repository\StockDataRepository.class
 com\stockplatform\service\PythonDataService.class
+com\stockplatform\scheduler\DataScheduler.class
+com\stockplatform\repository\StockDataRepository.class
+com\stockplatform\config\AppConfig.class
+com\stockplatform\controller\MarketController.class
 com\stockplatform\entity\StockSignal.class
 com\stockplatform\repository\StockSignalRepository.class
-com\stockplatform\scheduler\DataScheduler.class
 com\stockplatform\entity\StockData.class
 com\stockplatform\controller\LearnController.class
 com\stockplatform\controller\StockController.class

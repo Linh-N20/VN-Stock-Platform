@@ -27,6 +27,7 @@
 
 <div th:if="${hasData}">
     <div class="row g-3 mb-4">
+
         <!-- Tín hiệu chính -->
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100" th:if="${signal != null}">
@@ -40,17 +41,14 @@
                         th:classappend="'text-' + ${signal.signalColor}"
                         th:text="${signal.signal}"></h2>
                     <p class="text-muted small mb-3"
-                       th:text="'Điểm: ' + ${signal.score}"></p>
+                       th:text="'Điểm tổng hợp: ' + ${signal.score}"></p>
 
-                    <!-- Giá hiện tại -->
                     <div class="bg-light rounded-3 p-3 mb-3" th:if="${signal.currentPrice != null}">
-                        <p class="text-muted small mb-1">Giá gần nhất</p>
+                        <p class="text-muted small mb-1">Giá gần nhất (VND)</p>
                         <h4 class="fw-bold mb-0"
-                            th:text="${#numbers.formatDecimal(signal.currentPrice, 1, 2)} + ' VND'">
-                        </h4>
+                            th:text="${#numbers.formatDecimal(signal.currentPrice, 1, 2)}"></h4>
                     </div>
 
-                    <!-- Lý do -->
                     <div class="text-start" th:unless="${reasons.empty}">
                         <p class="fw-semibold small mb-2">Lý do phân tích:</p>
                         <ul class="list-unstyled small">
@@ -62,16 +60,15 @@
                 </div>
             </div>
 
-            <!-- Không có signal -->
             <div class="card border-0 shadow-sm h-100" th:unless="${signal != null}">
                 <div class="card-body text-center text-muted p-4">
                     <i class="bi bi-hourglass-split display-4 d-block mb-3 opacity-50"></i>
-                    Chưa có tín hiệu. Bấm "Cập nhật tín hiệu" để phân tích.
+                    Chưa có tín hiệu. Bấm "Cập nhật tín hiệu".
                 </div>
             </div>
         </div>
 
-        <!-- Các indicators -->
+        <!-- Indicators -->
         <div class="col-lg-8" th:if="${signal != null}">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white fw-semibold">
@@ -84,21 +81,21 @@
                         <div class="col-sm-6">
                             <div class="p-3 bg-light rounded-3">
                                 <div class="d-flex justify-content-between mb-1">
-                                    <span class="small fw-semibold">RSI (14)</span>
-                                    <span class="small"
-                                          th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'text-success fw-bold' : (${signal.rsi != null and signal.rsi > 70} ? 'text-danger fw-bold' : '')"
+                                    <span class="small fw-semibold">RSI (14 phiên)</span>
+                                    <span class="small fw-bold"
+                                          th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'text-success' : (${signal.rsi != null and signal.rsi > 70} ? 'text-danger' : 'text-muted')"
                                           th:text="${signal.rsi != null} ? ${#numbers.formatDecimal(signal.rsi, 1, 1)} : '—'">
                                     </span>
                                 </div>
-                                <div class="progress" style="height:6px">
+                                <div class="progress mb-1" style="height:8px">
                                     <div class="progress-bar"
                                          th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'bg-success' : (${signal.rsi != null and signal.rsi > 70} ? 'bg-danger' : 'bg-primary')"
                                          th:style="'width:' + (${signal.rsi != null} ? ${signal.rsi} : 50) + '%'">
                                     </div>
                                 </div>
-                                <div class="d-flex justify-content-between mt-1">
-                                    <small class="text-success">Quá bán (&lt;30)</small>
-                                    <small class="text-danger">Quá mua (&gt;70)</small>
+                                <div class="d-flex justify-content-between">
+                                    <small class="text-success">Quá bán &lt;30</small>
+                                    <small class="text-danger">Quá mua &gt;70</small>
                                 </div>
                             </div>
                         </div>
@@ -109,32 +106,50 @@
                                 <p class="small fw-semibold mb-2">MACD (12/26/9)</p>
                                 <div class="d-flex justify-content-between">
                                     <div>
-                                        <small class="text-muted d-block">MACD</small>
-                                        <span th:classappend="${signal.macd != null and signal.macd > 0} ? 'text-success' : 'text-danger'"
+                                        <small class="text-muted d-block">MACD Line</small>
+                                        <span class="fw-semibold"
+                                              th:classappend="${signal.macd != null and signal.macd > 0} ? 'text-success' : 'text-danger'"
                                               th:text="${signal.macd != null} ? ${#numbers.formatDecimal(signal.macd, 1, 3)} : '—'">
                                         </span>
                                     </div>
                                     <div>
-                                        <small class="text-muted d-block">Signal</small>
+                                        <small class="text-muted d-block">Signal Line</small>
                                         <span th:text="${signal.macdSignal != null} ? ${#numbers.formatDecimal(signal.macdSignal, 1, 3)} : '—'">
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block">Histogram</small>
+                                        <span th:classappend="${signal.macd != null and signal.macdSignal != null and signal.macd > signal.macdSignal} ? 'text-success' : 'text-danger'"
+                                              th:text="${signal.macd != null and signal.macdSignal != null} ? ${#numbers.formatDecimal(signal.macd - signal.macdSignal, 1, 3)} : '—'">
                                         </span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- MA -->
+                        <!-- Moving Averages -->
                         <div class="col-sm-6">
                             <div class="p-3 bg-light rounded-3">
                                 <p class="small fw-semibold mb-2">Moving Averages</p>
                                 <div class="d-flex justify-content-between">
                                     <div>
                                         <small class="text-muted d-block">MA20</small>
-                                        <span th:text="${signal.ma20 != null} ? ${#numbers.formatDecimal(signal.ma20, 1, 2)} : '—'"></span>
+                                        <span class="fw-semibold"
+                                              th:text="${signal.ma20 != null} ? ${#numbers.formatDecimal(signal.ma20, 1, 2)} : '—'">
+                                        </span>
                                     </div>
                                     <div>
                                         <small class="text-muted d-block">MA50</small>
-                                        <span th:text="${signal.ma50 != null} ? ${#numbers.formatDecimal(signal.ma50, 1, 2)} : '—'"></span>
+                                        <span class="fw-semibold"
+                                              th:text="${signal.ma50 != null} ? ${#numbers.formatDecimal(signal.ma50, 1, 2)} : '—'">
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <small class="text-muted d-block">Xu hướng</small>
+                                        <span th:if="${signal.ma20 != null and signal.ma50 != null}"
+                                              th:classappend="${signal.ma20 > signal.ma50} ? 'text-success fw-bold' : 'text-danger fw-bold'"
+                                              th:text="${signal.ma20 > signal.ma50} ? '↑ Tăng' : '↓ Giảm'">
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -147,13 +162,19 @@
                                 <div class="d-flex justify-content-between">
                                     <div>
                                         <small class="text-muted d-block">Dải trên</small>
-                                        <span class="text-danger"
+                                        <span class="text-danger fw-semibold"
                                               th:text="${signal.bbUpper != null} ? ${#numbers.formatDecimal(signal.bbUpper, 1, 2)} : '—'">
                                         </span>
                                     </div>
                                     <div>
+                                        <small class="text-muted d-block">Giá hiện tại</small>
+                                        <span class="fw-bold"
+                                              th:text="${signal.currentPrice != null} ? ${#numbers.formatDecimal(signal.currentPrice, 1, 2)} : '—'">
+                                        </span>
+                                    </div>
+                                    <div>
                                         <small class="text-muted d-block">Dải dưới</small>
-                                        <span class="text-success"
+                                        <span class="text-success fw-semibold"
                                               th:text="${signal.bbLower != null} ? ${#numbers.formatDecimal(signal.bbLower, 1, 2)} : '—'">
                                         </span>
                                     </div>
@@ -167,8 +188,8 @@
         </div>
     </div>
 
-    <!-- Price chart -->
-    <div class="card border-0 shadow-sm">
+    <!-- Biểu đồ giá -->
+    <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white fw-semibold">
             <i class="bi bi-graph-up me-2"></i>Biểu đồ giá 90 ngày
         </div>
@@ -179,11 +200,10 @@
 </div>
 
 <!-- Disclaimer -->
-<div class="alert alert-warning border-0 rounded-3 mt-4 small">
+<div class="alert alert-warning border-0 rounded-3 small">
     <i class="bi bi-exclamation-triangle me-2"></i>
     <strong>Lưu ý quan trọng:</strong> Tín hiệu kỹ thuật chỉ dựa trên dữ liệu lịch sử và công thức toán học.
-    Thị trường chứng khoán có thể biến động không theo dự đoán. Đây KHÔNG phải lời khuyên đầu tư.
-    Hãy tự nghiên cứu kỹ trước khi đưa ra quyết định.
+    Đây KHÔNG phải lời khuyên đầu tư. Hãy tự nghiên cứu kỹ trước khi đưa ra quyết định.
 </div>
 
 <!-- Data bridge: Thymeleaf → JavaScript -->

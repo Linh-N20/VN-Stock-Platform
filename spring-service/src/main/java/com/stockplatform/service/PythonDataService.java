@@ -36,8 +36,9 @@ public class PythonDataService {
     private String pythonServiceUrl;
 
     public PythonDataService(StockDataRepository stockDataRepo,
-                             StockSignalRepository signalRepo) {
-        this.restTemplate  = new RestTemplate();
+                             StockSignalRepository signalRepo,
+                             RestTemplate restTemplate) {
+        this.restTemplate  = restTemplate;
         this.stockDataRepo = stockDataRepo;
         this.signalRepo    = signalRepo;
     }

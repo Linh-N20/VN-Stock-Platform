@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: page('Thị trường', ~{::main-content})}">
+<body>
+<th:block th:fragment="main-content">
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h1 class="h3 fw-bold mb-0">Tổng quan thị trường</h1>
+        <small class="text-muted">Phân tích kỹ thuật 50+ cổ phiếu HoSE</small>
+    </div>
+</div>
+
+<!-- Python service warning -->
+<div th:unless="${pythonUp}" class="alert alert-warning border-0 rounded-3 mb-4">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <strong>Python service chưa chạy.</strong>
+    <code class="ms-2">uvicorn main:app --port 8000</code>
+</div>
+
+<!-- Error alert -->
+<div th:if="${error}" class="alert alert-danger border-0 rounded-3 mb-4">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <span th:text="${error}"></span>
+</div>
+
+<!-- Signal summary cards -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm border-start border-success border-3">
+            <div class="card-body py-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted small mb-1">Tín hiệu MUA</p>
+                    <h3 class="fw-bold text-success mb-0" th:text="${buyCount}">0</h3>
+                </div>
+                <i class="bi bi-arrow-up-circle-fill text-success fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm border-start border-warning border-3">
+            <div class="card-body py-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted small mb-1">Tín hiệu GIỮ</p>
+                    <h3 class="fw-bold text-warning mb-0" th:text="${holdCount}">0</h3>
+                </div>
+                <i class="bi bi-dash-circle-fill text-warning fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-4">
+        <div class="card border-0 shadow-sm border-start border-danger border-3">
+            <div class="card-body py-3 d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted small mb-1">Tín hiệu BÁN</p>
+                    <h3 class="fw-bold text-danger mb-0" th:text="${sellCount}">0</h3>
+                </div>
+                <i class="bi bi-arrow-down-circle-fill text-danger fs-2 opacity-50"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter & Sort -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form th:action="@{/market}" method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small fw-semibold">Ngành</label>
+                <select name="sector" class="form-select form-select-sm">
+                    <option value="">Tất cả ngành</option>
+                    <option th:each="sec : ${sectors}"
+                            th:value="${sec}" th:text="${sec}"
+                            th:selected="${sec == currentSector}">
+                    </option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold">Tín hiệu</label>
+                <select name="signal" class="form-select form-select-sm">
+                    <option value="">Tất cả</option>
+                    <option value="BUY"  th:selected="${'BUY'  == currentSignal}">🟢 BUY</option>
+                    <option value="HOLD" th:selected="${'HOLD' == currentSignal}">🟡 HOLD</option>
+                    <option value="SELL" th:selected="${'SELL' == currentSignal}">🔴 SELL</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold">Sắp xếp theo</label>
+                <select name="sortBy" class="form-select form-select-sm">
+                    <option value="symbol"    th:selected="${'symbol'    == currentSortBy}">Mã CK</option>
+                    <option value="price"     th:selected="${'price'     == currentSortBy}">Giá</option>
+                    <option value="changePct" th:selected="${'changePct' == currentSortBy}">% Thay đổi</option>
+                    <option value="rsi"       th:selected="${'rsi'       == currentSortBy}">RSI</option>
+                    <option value="score"     th:selected="${'score'     == currentSortBy}">Điểm tín hiệu</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-semibold">Thứ tự</label>
+                <select name="sortDir" class="form-select form-select-sm">
+                    <option value="asc"  th:selected="${'asc'  == currentSortDir}">Tăng dần ↑</option>
+                    <option value="desc" th:selected="${'desc' == currentSortDir}">Giảm dần ↓</option>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small fw-semibold">Hiển thị</label>
+                <select name="limit" class="form-select form-select-sm">
+                    <option value="5"  th:selected="${5  == currentLimit}">5</option>
+                    <option value="10" th:selected="${10 == currentLimit}">10</option>
+                    <option value="20" th:selected="${20 == currentLimit}">20</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="bi bi-funnel me-1"></i>Lọc
+                </button>
+            </div>
+        </form>
+
+        <div class="mt-2 d-flex gap-2 flex-wrap" th:if="${currentSector != null or currentSignal != null}">
+            <small class="text-muted">Đang lọc:</small>
+            <span th:if="${currentSector != null}" class="badge bg-light text-dark border"
+                  th:text="'Ngành: ' + ${currentSector}"></span>
+            <span th:if="${currentSignal != null}" class="badge bg-secondary"
+                  th:text="${currentSignal}"></span>
+            <a th:href="@{/market}" class="badge bg-secondary text-decoration-none">✕ Xoá lọc</a>
+        </div>
+    </div>
+</div>
+
+<!-- Stocks table -->
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+
+        <div th:if="${stocks.empty}" class="p-5 text-center text-muted">
+            <i class="bi bi-inbox display-4 d-block mb-3 opacity-50"></i>
+            <p>Chưa có dữ liệu. Lần đầu tải sẽ mất 15-30 giây do rate limit API.</p>
+            <small>Thử giảm số lượng hiển thị xuống 5 và bấm Lọc lại.</small>
+        </div>
+
+        <div class="table-responsive" th:unless="${stocks.empty}">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th>Mã CK</th>
+                    <th>Tên</th>
+                    <th>Ngành</th>
+                    <th class="text-end">Giá</th>
+                    <th class="text-end">% Thay đổi</th>
+                    <th class="text-center">RSI</th>
+                    <th class="text-center">Xu hướng MA</th>
+                    <th class="text-center">Tín hiệu</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="stock : ${stocks}">
+                    <td class="fw-bold" th:text="${stock['symbol']}"></td>
+                    <td class="small text-muted" th:text="${stock['name']}"></td>
+                    <td>
+                        <span class="badge bg-light text-dark border small"
+                              th:text="${stock['sector']}"></span>
+                    </td>
+                    <td class="text-end fw-semibold">
+                        <span th:if="${stock['price'] != null}"
+                              th:text="${#numbers.formatDecimal(stock['price'], 1, 2)}"></span>
+                        <span th:unless="${stock['price'] != null}" class="text-muted">—</span>
+                    </td>
+                    <td class="text-end fw-semibold">
+                        <span th:if="${stock['changePct'] != null}">
+                            <span th:with="chg=${stock['changePct']}"
+                                  th:classappend="${chg != null and #numbers.formatDecimal(chg,1,2).startsWith('-')} ? 'text-danger' : 'text-success'"
+                                  th:text="${(chg != null and !#numbers.formatDecimal(chg,1,2).startsWith('-')) ? '+' : ''} + ${#numbers.formatDecimal(chg, 1, 2)} + '%'">
+                            </span>
+                        </span>
+                        <span th:unless="${stock['changePct'] != null}" class="text-muted">—</span>
+                    </td>
+                    <td class="text-center">
+                        <span th:if="${stock['rsi'] != null}"
+                              th:text="${#numbers.formatDecimal(stock['rsi'], 1, 1)}">
+                        </span>
+                        <span th:unless="${stock['rsi'] != null}" class="text-muted">—</span>
+                    </td>
+                    <td class="text-center small">
+                        <span th:if="${stock['ma20'] != null and stock['ma50'] != null}">
+                            <span th:with="ma20=${stock['ma20']}, ma50=${stock['ma50']}">
+                                <span th:if="${#numbers.formatDecimal(ma20,1,2) > #numbers.formatDecimal(ma50,1,2)}"
+                                      class="text-success">↑ Uptrend</span>
+                                <span th:unless="${#numbers.formatDecimal(ma20,1,2) > #numbers.formatDecimal(ma50,1,2)}"
+                                      class="text-danger">↓ Downtrend</span>
+                            </span>
+                        </span>
+                        <span th:unless="${stock['ma20'] != null}" class="text-muted">—</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge rounded-pill px-3"
+                              th:classappend="${'BUY' == stock['signal']} ? 'bg-success' : (${'SELL' == stock['signal']} ? 'bg-danger' : 'bg-warning text-dark')"
+                              th:text="${stock['signal']}">
+                        </span>
+                    </td>
+                    <td>
+                        <a th:href="@{/stocks/{s}(s=${stock['symbol']})}"
+                           class="btn btn-sm btn-outline-primary">Chi tiết</a>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted small mt-3">
+    <i class="bi bi-info-circle me-1"></i>
+    Dữ liệu được cache 1 giờ sau lần tải đầu tiên. Tải trang lần đầu có thể mất 15-30 giây.
+</p>
+
+</th:block>
+</body>
+</html>

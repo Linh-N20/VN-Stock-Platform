@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: page('Chứng khoán là gì?', ~{::main-content})}">
+<body>
+<th:block th:fragment="main-content">
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a th:href="@{/learn}">Học chứng khoán</a></li>
+        <li class="breadcrumb-item active">Chứng khoán là gì?</li>
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+<div class="col-lg-8">
+
+<h1 class="h2 fw-bold mb-1">Chứng khoán là gì?</h1>
+<p class="text-muted mb-4">Kiến thức nền tảng dành cho người mới bắt đầu</p>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Cổ phiếu (Stock)</h5>
+        <p>Khi một công ty muốn huy động vốn, họ chia công ty thành nhiều phần nhỏ gọi là <strong>cổ phiếu</strong>.
+        Mua cổ phiếu nghĩa là bạn trở thành <strong>cổ đông</strong> — đồng sở hữu một phần công ty đó.</p>
+        <div class="bg-light rounded-3 p-3">
+            <p class="mb-1 small"><strong>Ví dụ:</strong> Vinamilk (VNM) có 2.089 triệu cổ phiếu đang lưu hành.</p>
+            <p class="mb-0 small">Mua 100 cổ phiếu VNM = bạn sở hữu 100/2.089.000.000 = 0.000005% công ty Vinamilk.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Tại sao giá cổ phiếu thay đổi?</h5>
+        <p>Giá cổ phiếu phụ thuộc vào <strong>cung và cầu</strong> trên thị trường:</p>
+        <div class="row g-3">
+            <div class="col-sm-6">
+                <div class="p-3 bg-success bg-opacity-10 rounded-3">
+                    <p class="fw-bold text-success mb-2">↑ Giá tăng khi:</p>
+                    <ul class="small text-muted mb-0">
+                        <li>Công ty báo lợi nhuận tốt</li>
+                        <li>Triển vọng ngành tăng trưởng</li>
+                        <li>Nhà đầu tư lớn mua vào</li>
+                        <li>Tin tức tích cực</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="p-3 bg-danger bg-opacity-10 rounded-3">
+                    <p class="fw-bold text-danger mb-2">↓ Giá giảm khi:</p>
+                    <ul class="small text-muted mb-0">
+                        <li>Kết quả kinh doanh kém</li>
+                        <li>Kinh tế suy thoái</li>
+                        <li>Nhà đầu tư bán tháo</li>
+                        <li>Tin tức tiêu cực</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Thị trường chứng khoán Việt Nam</h5>
+        <div class="row g-3">
+            <div class="col-sm-4 text-center">
+                <div class="p-3 bg-light rounded-3">
+                    <p class="fw-bold mb-1">HoSE</p>
+                    <small class="text-muted">Sở GDCK TP.HCM<br>Cổ phiếu lớn: VNM, VCB, FPT...</small>
+                </div>
+            </div>
+            <div class="col-sm-4 text-center">
+                <div class="p-3 bg-light rounded-3">
+                    <p class="fw-bold mb-1">HNX</p>
+                    <small class="text-muted">Sở GDCK Hà Nội<br>Cổ phiếu vừa và nhỏ</small>
+                </div>
+            </div>
+            <div class="col-sm-4 text-center">
+                <div class="p-3 bg-light rounded-3">
+                    <p class="fw-bold mb-1">UPCoM</p>
+                    <small class="text-muted">Thị trường chưa niêm yết<br>Rủi ro cao hơn</small>
+                </div>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0">
+            <i class="bi bi-clock me-1"></i>
+            Giờ giao dịch: 9:00 – 14:45 (thứ 2 đến thứ 6, trừ ngày lễ)
+        </p>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Trái phiếu (Bond)</h5>
+        <p>Trái phiếu là <strong>khoản vay</strong> — bạn cho công ty hoặc chính phủ vay tiền,
+        họ trả lãi định kỳ (coupon) và hoàn vốn khi đáo hạn.</p>
+        <div class="bg-light rounded-3 p-3">
+            <p class="mb-0 small"><strong>Ví dụ:</strong> Trái phiếu Chính phủ 10 năm, lãi suất 5%/năm.
+            Mua 10 triệu → nhận 500.000đ/năm trong 10 năm, cuối kỳ nhận lại 10 triệu.</p>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between">
+    <a th:href="@{/learn}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Về trang học
+    </a>
+    <a th:href="@{/learn/how-to-read}" class="btn btn-primary">
+        Bài tiếp: Đọc biểu đồ <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+</div>
+
+</div>
+</div>
+</th:block>
+</body>
+</html>

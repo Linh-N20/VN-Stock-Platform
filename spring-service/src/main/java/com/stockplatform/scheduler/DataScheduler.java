@@ -42,17 +42,10 @@ public class DataScheduler {
      */
     @EventListener(ApplicationReadyEvent.class)
     public void onStartup() {
-        if (!schedulerEnabled) return;
-        log.info("App started — checking Python service...");
-
-        if (!pythonDataService.isPythonServiceUp()) {
-            log.warn("Python service not running at startup. Data fetch skipped.");
-            log.warn("Start it with: uvicorn main:app --port 8000");
-            return;
-        }
-
-        log.info("Python service OK. Fetching initial data...");
-        fetchAll();
+        // Tắt auto-fetch khi startup để tránh conflict rate limit với /market endpoint
+        // Dữ liệu sẽ được fetch tự động lúc 18:00 hoặc khi user truy cập trang chi tiết
+        log.info("App started. Data will be fetched at 18:00 or when visiting stock detail pages.");
+        log.info("Python service status: {}", pythonDataService.isPythonServiceUp() ? "UP" : "DOWN");
     }
 
     /**

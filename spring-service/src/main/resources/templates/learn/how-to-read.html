@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{fragments/layout :: page('Đọc biểu đồ cơ bản', ~{::main-content})}">
+<body>
+<th:block th:fragment="main-content">
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a th:href="@{/learn}">Học chứng khoán</a></li>
+        <li class="breadcrumb-item active">Đọc biểu đồ cơ bản</li>
+    </ol>
+</nav>
+
+<div class="row justify-content-center">
+<div class="col-lg-8">
+
+<h1 class="h2 fw-bold mb-1">Đọc biểu đồ cơ bản</h1>
+<p class="text-muted mb-4">Candlestick, đường giá và khối lượng giao dịch</p>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Nến Nhật (Candlestick) là gì?</h5>
+        <p>Mỗi cây nến đại diện cho <strong>một phiên giao dịch</strong>, chứa 4 thông tin quan trọng:</p>
+        <div class="row g-3 align-items-center">
+            <div class="col-sm-4 text-center">
+                <!-- Minh họa nến tăng/giảm bằng CSS -->
+                <div class="d-flex justify-content-center gap-4 my-3">
+                    <div class="text-center">
+                        <div style="width:20px;background:#198754;height:60px;margin:0 auto;position:relative;">
+                            <div style="width:2px;background:#198754;height:15px;position:absolute;left:9px;top:-15px;"></div>
+                            <div style="width:2px;background:#198754;height:15px;position:absolute;left:9px;bottom:-15px;"></div>
+                        </div>
+                        <small class="text-success fw-bold d-block mt-3">Nến xanh<br>(Tăng)</small>
+                    </div>
+                    <div class="text-center">
+                        <div style="width:20px;background:#dc3545;height:60px;margin:0 auto;position:relative;">
+                            <div style="width:2px;background:#dc3545;height:15px;position:absolute;left:9px;top:-15px;"></div>
+                            <div style="width:2px;background:#dc3545;height:15px;position:absolute;left:9px;bottom:-15px;"></div>
+                        </div>
+                        <small class="text-danger fw-bold d-block mt-3">Nến đỏ<br>(Giảm)</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-8">
+                <ul class="list-unstyled">
+                    <li class="mb-2"><span class="badge bg-secondary me-2">O</span> <strong>Open</strong> — Giá mở cửa đầu phiên</li>
+                    <li class="mb-2"><span class="badge bg-danger me-2">H</span> <strong>High</strong> — Giá cao nhất trong phiên (đỉnh bấc trên)</li>
+                    <li class="mb-2"><span class="badge bg-success me-2">L</span> <strong>Low</strong> — Giá thấp nhất trong phiên (đáy bấc dưới)</li>
+                    <li class="mb-2"><span class="badge bg-primary me-2">C</span> <strong>Close</strong> — Giá đóng cửa cuối phiên</li>
+                </ul>
+                <p class="text-muted small mb-0">
+                    Nến <span class="text-success fw-bold">xanh</span>: Close &gt; Open (giá tăng trong phiên)<br>
+                    Nến <span class="text-danger fw-bold">đỏ</span>: Close &lt; Open (giá giảm trong phiên)
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Khối lượng giao dịch (Volume)</h5>
+        <p>Volume là <strong>số cổ phiếu được mua bán</strong> trong một phiên. Đây là chỉ số rất quan trọng:</p>
+        <div class="row g-3">
+            <div class="col-sm-6">
+                <div class="p-3 bg-success bg-opacity-10 rounded-3">
+                    <p class="fw-bold text-success small mb-1">Giá tăng + Volume lớn</p>
+                    <small class="text-muted">Tín hiệu tăng <strong>đáng tin cậy</strong> — nhiều người đang mua vào</small>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="p-3 bg-warning bg-opacity-10 rounded-3">
+                    <p class="fw-bold text-warning small mb-1">Giá tăng + Volume nhỏ</p>
+                    <small class="text-muted">Tín hiệu yếu — ít người tham gia, có thể không bền</small>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="p-3 bg-danger bg-opacity-10 rounded-3">
+                    <p class="fw-bold text-danger small mb-1">Giá giảm + Volume lớn</p>
+                    <small class="text-muted">Tín hiệu giảm mạnh — nhiều người đang bán tháo</small>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="p-3 bg-light rounded-3">
+                    <p class="fw-bold small mb-1">Giá giảm + Volume nhỏ</p>
+                    <small class="text-muted">Điều chỉnh nhẹ, ít áp lực bán — thường không đáng lo</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h5 class="fw-bold mb-3">Xu hướng (Trend)</h5>
+        <div class="row g-3">
+            <div class="col-sm-4">
+                <div class="p-3 bg-success bg-opacity-10 rounded-3 text-center">
+                    <p class="fw-bold text-success mb-1">📈 Uptrend</p>
+                    <small class="text-muted">Đỉnh sau cao hơn đỉnh trước, đáy sau cao hơn đáy trước</small>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="p-3 bg-danger bg-opacity-10 rounded-3 text-center">
+                    <p class="fw-bold text-danger mb-1">📉 Downtrend</p>
+                    <small class="text-muted">Đỉnh sau thấp hơn đỉnh trước, đáy sau thấp hơn đáy trước</small>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="p-3 bg-secondary bg-opacity-10 rounded-3 text-center">
+                    <p class="fw-bold mb-1">➡️ Sideway</p>
+                    <small class="text-muted">Giá dao động trong một biên độ hẹp, không có xu hướng rõ</small>
+                </div>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0">
+            <i class="bi bi-lightbulb text-warning me-1"></i>
+            <strong>Nguyên tắc cơ bản:</strong> "Trend is your friend" — đừng giao dịch ngược xu hướng khi mới bắt đầu.
+        </p>
+    </div>
+</div>
+
+<div class="d-flex justify-content-between">
+    <a th:href="@{/learn/intro}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Bài trước
+    </a>
+    <a th:href="@{/learn/risk}" class="btn btn-primary">
+        Bài tiếp: Quản lý rủi ro <i class="bi bi-arrow-right ms-1"></i>
+    </a>
+</div>
+
+</div>
+</div>
+</th:block>
+</body>
+</html>
