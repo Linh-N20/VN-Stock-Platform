@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security"
       th:fragment="page(title, content)">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title th:text="${title} + ' — VN Stock Platform'">VN Stock Platform</title>
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" th:href="@{/css/style.css}">
 </head>
-<body class="bg-light">
+<body>
 
+<!-- Navbar -->
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm mb-4">
     <div class="container">
         <a class="navbar-brand fw-bold" th:href="@{/}">
@@ -22,17 +22,19 @@
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="nav">
-            <!-- Search bar -->
+            <!-- Search -->
             <form class="d-flex me-auto ms-3" th:action="@{/search}" method="get">
                 <div class="input-group" style="width:240px">
-                    <input type="text" name="q" class="form-control form-control-sm bg-secondary border-0 text-white"
+                    <input type="text" name="q"
+                           class="form-control form-control-sm bg-secondary border-0 text-white"
                            placeholder="Tìm cổ phiếu... (VNM, FPT)" autocomplete="off">
                     <button class="btn btn-success btn-sm" type="submit">
                         <i class="bi bi-search"></i>
                     </button>
                 </div>
             </form>
-            <ul class="navbar-nav">
+
+            <ul class="navbar-nav align-items-center gap-1">
                 <li class="nav-item">
                     <a class="nav-link" th:href="@{/}">
                         <i class="bi bi-speedometer2 me-1"></i>Dashboard
@@ -45,14 +47,72 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" th:href="@{/learn}">
-                        <i class="bi bi-book me-1"></i>Học chứng khoán
+                        <i class="bi bi-book me-1"></i>Học
                     </a>
+                </li>
+
+                <!-- Chưa đăng nhập -->
+                <li class="nav-item" sec:authorize="!isAuthenticated()">
+                    <a class="btn btn-outline-light btn-sm ms-2" th:href="@{/login}">
+                        <i class="bi bi-google me-1"></i>Đăng nhập
+                    </a>
+                </li>
+
+                <!-- Đã đăng nhập -->
+                <li class="nav-item dropdown ms-2" sec:authorize="isAuthenticated()">
+                    <a class="nav-link dropdown-toggle d-flex align-items-center gap-2 p-0 ps-1"
+                       href="#" data-bs-toggle="dropdown" aria-expanded="false">
+
+                        <!-- Avatar: dùng ảnh Google nếu có, fallback chữ cái đầu -->
+                        <th:block th:with="pic=${#authentication.principal.picture},
+                                           nm=${#authentication.principal.fullName}">
+                            <img th:if="${pic != null and !#strings.isEmpty(pic)}"
+                                 th:src="${pic}"
+                                 class="nav-avatar"
+                                 th:alt="${nm}"
+                                 referrerpolicy="no-referrer">
+                            <span th:unless="${pic != null and !#strings.isEmpty(pic)}"
+                                  class="nav-avatar-fallback"
+                                  th:text="${nm != null and !#strings.isEmpty(nm)}
+                                           ? ${#strings.toUpperCase(#strings.substring(nm,0,1))}
+                                           : 'U'">
+                            </span>
+                        </th:block>
+
+                        <span class="small text-white" sec:authentication="principal.fullName"></span>
+                    </a>
+
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="min-width:210px">
+                        <!-- Info header -->
+                        <li class="px-3 py-2 border-bottom">
+                            <div class="small fw-semibold" sec:authentication="principal.fullName"></div>
+                            <div class="small text-muted" sec:authentication="principal.email"></div>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2" th:href="@{/profile}">
+                                <i class="bi bi-person me-2 text-primary"></i>Profile
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider my-1"></li>
+                        <li>
+                            <form th:action="@{/logout}" method="post">
+                                <input type="hidden"
+                                       th:name="${_csrf.parameterName}"
+                                       th:value="${_csrf.token}"/>
+                                <button type="submit"
+                                        class="dropdown-item py-2 text-danger border-0 bg-transparent w-100 text-start">
+                                    <i class="bi bi-box-arrow-right me-2"></i>Đăng xuất
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
                 </li>
             </ul>
         </div>
     </div>
 </nav>
 
+<!-- Flash messages -->
 <div class="container">
     <div th:if="${success}" class="alert alert-success alert-dismissible fade show border-0 rounded-3">
         <i class="bi bi-check-circle me-2"></i><span th:text="${success}"></span>
@@ -64,16 +124,16 @@
     </div>
 </div>
 
-<main class="container pb-5">
+<!-- Main content -->
+<main class="container">
     <th:block th:replace="${content}"/>
 </main>
 
-<!-- Disclaimer cố định ở cuối -->
-<footer class="bg-dark text-center py-3 mt-4">
+<!-- Footer — luôn ở đáy nhờ flexbox trong body -->
+<footer class="bg-dark text-center py-3">
     <small class="text-warning">
         <i class="bi bi-exclamation-triangle me-1"></i>
-        Thông tin trên website mang tính tham khảo kỹ thuật, KHÔNG phải lời khuyên đầu tư.
-        Mọi quyết định đầu tư đều có rủi ro.
+        Thông tin mang tính tham khảo kỹ thuật, KHÔNG phải lời khuyên đầu tư.
     </small>
 </footer>
 

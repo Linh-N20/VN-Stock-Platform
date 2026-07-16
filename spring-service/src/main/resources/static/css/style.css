@@ -1,17 +1,45 @@
-body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+/* ── Sticky footer layout ───────────────────────────────────────────────────── */
+html, body { height: 100%; }
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background-color: #f8f9fa;
+}
+main.container { flex: 1; padding-bottom: 2rem; }
+footer { flex-shrink: 0; }
 
+/* ── Cards & tables ─────────────────────────────────────────────────────────── */
 .card        { border-radius: 12px; }
 .card-header { border-radius: 12px 12px 0 0 !important; font-size: .88rem; padding: .85rem 1.25rem; border-bottom: 1px solid #f0f0f0; }
-
 .table thead th { font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; color: #6c757d; }
-.table td        { font-size: .875rem; vertical-align: middle; }
-
+.table td { font-size: .875rem; vertical-align: middle; }
 .hover-card { transition: transform .15s ease, box-shadow .15s ease; cursor: pointer; }
 .hover-card:hover { transform: translateY(-3px); box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.1) !important; }
-
 .badge { font-size: .7rem; font-weight: 600; letter-spacing: .4px; }
 .progress { border-radius: 10px; }
 .alert { font-size: .875rem; border-radius: 10px; }
-code  { background: #f0f4ff; padding: 2px 6px; border-radius: 4px; color: #4f46e5; font-size: .85em; }
+code { background: #f0f4ff; padding: 2px 6px; border-radius: 4px; color: #4f46e5; font-size: .85em; }
 
-footer { position: sticky; bottom: 0; z-index: 100; }
+/* ── Navbar avatar ──────────────────────────────────────────────────────────── */
+.nav-avatar {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(255,255,255,0.3);
+    flex-shrink: 0;
+}
+.nav-avatar-fallback {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4f46e5, #06b6d4);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    color: white;
+    font-weight: 600;
+    border: 2px solid rgba(255,255,255,0.3);
+    flex-shrink: 0;
+}

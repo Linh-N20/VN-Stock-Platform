@@ -1,91 +1,381 @@
+<div align="center">
+
 # VN Stock Platform
 
-Website phân tích kỹ thuật và học chứng khoán Việt Nam.  
-Dùng tín hiệu RSI, MACD, Bollinger Bands để gợi ý BUY/HOLD/SELL — **không phải lời khuyên đầu tư**.
+### Technical Analysis Platform for Vietnamese Stock Market
 
-![Java](https://img.shields.io/badge/Java-17+-orange)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2-brightgreen)
-![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-teal)
+A full-stack web application for analyzing Vietnamese stocks using technical indicators such as **RSI**, **MACD**, **Moving Average**, and **Bollinger Bands**.
 
----
+Built with **Spring Boot**, **FastAPI**, **VNStock**, and **Bootstrap 5**.
 
-## Kiến trúc
-
-```
-python-service/     ← FastAPI + VNStock: lấy dữ liệu HoSE/HNX
-spring-service/     ← Spring Boot + Thymeleaf: web app chính
-```
-
-```
-Browser → Spring Boot (8080) → Python FastAPI (8000) → VNStock → TCBS API
-                ↓
-            H2 / MySQL (lưu lịch sử giá + tín hiệu)
-```
+![Java](https://img.shields.io/badge/Java-17-orange?style=for-the-badge)
+![Spring Boot](https://img.shields.io/badge/Spring_Boot-3.2-brightgreen?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.10-blue?style=for-the-badge)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge)
+![Bootstrap](https://img.shields.io/badge/Bootstrap-5.3-purple?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-success?style=for-the-badge)
 
 ---
 
-## Tính năng
+> **Educational project only.**
+>
+> This platform is intended for learning technical analysis and software engineering.
+> It **does not provide financial or investment advice.**
 
-| Tính năng | Mô tả |
-|---|---|
-| **Dashboard** | Watchlist 8 cổ phiếu lớn + tín hiệu BUY/HOLD/SELL |
-| **Chi tiết cổ phiếu** | Biểu đồ 90 ngày + RSI, MACD, Bollinger Bands |
-| **Tín hiệu tổng hợp** | Scoring rule-based từ 4 chỉ số kỹ thuật |
-| **Tìm kiếm** | Tìm cổ phiếu theo mã hoặc tên |
-| **Học chứng khoán** | Bài học RSI, MACD, BB + từ điển thuật ngữ |
-| **Auto refresh** | Scheduler tự cập nhật dữ liệu lúc 18:00 thứ 2–6 |
+</div>
 
 ---
 
-## Cài đặt & Chạy
+# Features
 
-### Yêu cầu
-- Java 17+ & Maven 3.6+
+## Dashboard
+
+- Real-time watchlist
+- BUY / HOLD / SELL recommendation
+- Daily technical signals
+- Market overview
+
+---
+
+## Technical Indicators
+
+Supports multiple indicators:
+
+- RSI (14)
+- MACD (12/26/9)
+- Moving Average (20 / 50)
+- Bollinger Bands (20)
+
+Each indicator contributes to a scoring system used to generate recommendations.
+
+---
+
+## Interactive Stock Charts
+
+- Today, 1-week, 1-month and 90-day historical prices
+- Volume
+- Technical overlays
+- Responsive charts
+
+---
+
+## Search
+
+Search stocks by:
+
+- Stock symbol
+- Company name
+
+---
+
+## Learning Center
+
+Built-in tutorials:
+
+- RSI
+- MACD
+- Bollinger Bands
+- Technical Analysis Basics
+
+Designed for beginners entering the Vietnamese stock market.
+
+---
+
+## Automatic Data Update
+
+Scheduler automatically refreshes market data after a certain time.
+
+---
+
+# Screenshots
+
+## Dashboard
+
+<p align="center">
+<img src="images/dashboard.png" width="900">
+</p>
+
+---
+
+## User Authentication
+
+Secure authentication powered by **Google OAuth2**.
+
+Features:
+
+- Sign in with Google
+- Secure OAuth2 authentication
+- Personalized user session
+- Protected features for logged-in users
+
+---
+
+## Google Login
+
+<p align="center">
+    <img src="images/login.png" width="900">
+</p>
+
+---
+
+## Stock Detail
+
+<p align="center">
+<img src="images/detail.png" width="900">
+</p>
+
+---
+
+## Charts
+
+<p align="center">
+<img src="images/chart.png" width="900">
+</p>
+
+---
+
+## Stock Market
+
+<p align="center">
+<img src="images/market.png" width="900">
+</p>
+
+---
+
+## Learning Center
+
+<p align="center">
+<img src="images/learn.png" width="900">
+</p>
+
+---
+
+# System Architecture
+
+```text
+                     Browser
+                         │
+                         ▼
+               Spring Boot + Thymeleaf
+                         │
+          Spring Security + Google OAuth2
+                         │
+              User Authentication
+                         │
+                         ▼
+                Business Services
+                         │
+                         ▼
+                    Python FastAPI
+                         │
+                         ▼
+                     VNStock API
+
+Spring Boot
+      │
+      ▼
+ MySQL / H2 Database
+```
+
+---
+
+# Technology Stack
+
+## Backend
+
+- Spring Boot
+- Spring Security
+- OAuth2 Client
+- Java 17
+- Maven
+
+## Python Service
+
+- FastAPI
+- VNStock
+- Pandas
+- NumPy
+
+## Frontend
+
+- Thymeleaf
+- Bootstrap 5
+- JavaScript
+- Chart.js
+
+## Database
+
+- MySQL
+- H2
+
+## Tools
+
+- VS Code
+- Git
+- GitHub
+
+---
+
+# Project Structure
+
+```
+VN-Stock-Platform/
+
+├── spring-service/
+│   ├── controller/
+│   ├── service/
+│   ├── repository/
+│   ├── entity/
+|   ├── security/
+│   ├── templates/
+│   └── static/
+│
+├── python-service/
+│
+├── images/
+│
+└── README.md
+```
+
+---
+
+# Getting Started
+
+## Prerequisites
+
+- Java 17+
+- Maven
 - Python 3.10+
+- MySQL (optional)
 
-### Bước 1 — Chạy Python service
+---
 
-Mở Terminal 1:
+## Clone
+
+```bash
+git clone https://github.com/Linh-N20/VN-Stock-Platform.git
+
+cd VN-Stock-Platform
+```
+
+---
+
+## Start Python Service
+
 ```bash
 cd python-service
 
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+pip install -r requirements.txt  # Only for first run
+
+uvicorn main:app --reload
 ```
 
-Kiểm tra: http://localhost:8000/docs
+Open
 
-### Bước 2 — Chạy Spring Boot
+```
+http://localhost:8000/docs
+```
 
-Mở Terminal 2:
+---
+
+## Start Spring Boot
+
 ```bash
 cd spring-service
+
 mvn spring-boot:run
 ```
 
-Mở: **http://localhost:8080**
+Open
+
+```
+http://localhost:8080
+```
 
 ---
 
-## Chỉ số kỹ thuật được sử dụng
+# Recommendation Logic
 
-| Chỉ số | Tham số | Tín hiệu |
-|---|---|---|
-| RSI | 14 phiên | < 30 = quá bán (+2đ), > 70 = quá mua (−2đ) |
-| MACD | 12/26/9 | Cắt lên signal (+2đ), cắt xuống (−2đ) |
-| MA Cross | MA20/MA50 | Giá > MA20 > MA50 = uptrend (+2đ) |
-| Bollinger | 20 phiên | Chạm dải dưới (+1đ), chạm dải trên (−1đ) |
+Each technical indicator contributes a score.
 
-**Kết luận:** Tổng điểm ≥ 3 → BUY | ≤ −3 → SELL | còn lại → HOLD
+| Indicator | Signal | Score |
+|-----------|--------|------:|
+| RSI | Oversold | +2 |
+| RSI | Overbought | -2 |
+| MACD | Bullish Cross | +2 |
+| MACD | Bearish Cross | -2 |
+| MA20 > MA50 | Uptrend | +2 |
+| Price touches Lower BB | +1 |
+| Price touches Upper BB | -1 |
+
+Final decision:
+
+| Score | Recommendation |
+|------:|---------------|
+| ≥ 3 | BUY |
+| -2 ~ 2 | HOLD |
+| ≤ -3 | SELL |
 
 ---
 
-## Disclaimer
+# Future Improvements
 
-Thông tin trên website **chỉ mang tính tham khảo kỹ thuật**, không phải lời khuyên đầu tư.  
-Mọi quyết định đầu tư đều có rủi ro. Hãy tự nghiên cứu kỹ trước khi giao dịch.
+- Favorite Stocks
+- Portfolio Tracking
+- AI News Summary
+- Candlestick Pattern Detection
+- Email Alerts
+- Docker Deployment
+- Kubernetes Deployment
+- CI/CD Pipeline
 
 ---
 
-*Portfolio project — HCMUT 2026*
+# 📌 Roadmap
+
+- [x] Dashboard
+- [x] Technical Indicators
+- [x] Chart Visualization
+- [x] Learning Center
+- [x] Scheduler
+- [x] User Login
+- [ ] Portfolio Management
+- [ ] AI Recommendation
+- [ ] Docker
+- [ ] Deployment
+
+---
+
+# Contributing
+
+Pull Requests are welcome.
+
+For major changes, please open an issue first to discuss your ideas.
+
+---
+
+# Disclaimer
+
+This project is developed for educational purposes only.
+
+The generated BUY/HOLD/SELL signals are based on predefined technical rules and should **not** be considered investment advice.
+
+Always perform your own research before making financial decisions.
+
+---
+
+# Author
+
+**Nguyễn Thùy Linh**
+
+Computer Science Student
+
+Ho Chi Minh City University of Technology (HCMUT)
+
+---
+
+<div align="center">
+
+⭐ If you found this project interesting, consider giving it a star!
+
+</div>

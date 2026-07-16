@@ -433,3 +433,246 @@ def search_stocks(q: str = Query(min_length=1, max_length=20)):
         if q_upper in s["symbol"] or q_lower in s["name"].lower()
     ]
     return {"query": q, "results": matches[:10]}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INTRADAY — Giá realtime + Order book
+# Thêm 2 endpoint này vào cuối main.py
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/stocks/intraday/{symbol}")
+def get_intraday(symbol: str):
+    """Giá realtime trong phiên + % thay đổi so với hôm qua."""
+    symbol = symbol.upper().strip()
+    try:
+        from datetime import datetime as dt, timedelta, date as dt_date
+        stock = get_stock_client().stock(symbol=symbol, source="VCI")
+
+        today     = dt.now().strftime("%Y-%m-%d")
+        week_ago  = (dt.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+
+        df = stock.quote.history(start=week_ago, end=today, interval="1D")
+
+        if df is None or df.empty:
+            raise HTTPException(status_code=404, detail=f"Không có dữ liệu cho {symbol}")
+
+        latest      = df.iloc[-1]
+        prev        = df.iloc[-2] if len(df) > 1 else latest
+
+        cur_price   = safe_float(latest.get("close"))
+        open_price  = safe_float(latest.get("open"))
+        high_price  = safe_float(latest.get("high"))
+        low_price   = safe_float(latest.get("low"))
+        volume      = safe_float(latest.get("volume"))
+        prev_close  = safe_float(prev.get("close"))
+
+        # Tham chiếu = giá đóng cửa hôm qua
+        ref_price   = prev_close
+        change      = round(cur_price - ref_price, 2)   if cur_price and ref_price else None
+        change_pct  = round(change / ref_price * 100, 2) if change and ref_price   else None
+
+        return {
+            "symbol":       symbol,
+            "currentPrice": cur_price,
+            "openPrice":    open_price,
+            "highPrice":    high_price,
+            "lowPrice":     low_price,
+            "refPrice":     ref_price,
+            "change":       change,
+            "changePct":    change_pct,
+            "volume":       volume,
+            "date":         str(latest.get("time", today)),
+            "updatedAt":    dt.now().strftime("%H:%M:%S"),
+            "isTrading":    _is_trading_hours(),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Intraday error {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stocks/orderbook/{symbol}")
+def get_orderbook(symbol: str):
+    """
+    Order book: top 3 lệnh mua (bid) và bán (ask).
+    Dùng price_depth nếu có, fallback về synthetic từ OHLC.
+    """
+    symbol = symbol.upper().strip()
+    try:
+        from datetime import datetime as dt, timedelta
+        stock = get_stock_client().stock(symbol=symbol, source="VCI")
+
+        # Thử lấy price_depth thực
+        try:
+            df_depth = stock.quote.price_depth()
+            if df_depth is not None and not df_depth.empty:
+                bids, asks = [], []
+                for _, row in df_depth.iterrows():
+                    side   = str(row.get("side", "")).upper()
+                    price  = safe_float(row.get("price"))
+                    volume = safe_float(row.get("volume"))
+                    if price and volume:
+                        item = {"price": price, "volume": volume}
+                        if side in ("BID", "BUY", "MUA"):
+                            bids.append(item)
+                        elif side in ("ASK", "SELL", "BAN"):
+                            asks.append(item)
+
+                bids.sort(key=lambda x: x["price"], reverse=True)
+                asks.sort(key=lambda x: x["price"])
+
+                if bids or asks:
+                    return {
+                        "symbol":    symbol,
+                        "bids":      bids[:3],
+                        "asks":      asks[:3],
+                        "updatedAt": dt.now().strftime("%H:%M:%S"),
+                    }
+        except Exception as depth_err:
+            logger.warning(f"price_depth failed for {symbol}: {depth_err}")
+
+        # Fallback: synthetic order book từ OHLC
+        today    = dt.now().strftime("%Y-%m-%d")
+        week_ago = (dt.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        df = stock.quote.history(start=week_ago, end=today, interval="1D")
+
+        if df is None or df.empty:
+            return {
+                "symbol":    symbol,
+                "bids":      [],
+                "asks":      [],
+                "note":      "Không có dữ liệu",
+                "updatedAt": dt.now().strftime("%H:%M:%S")
+            }
+
+        latest    = df.iloc[-1]
+        cur_price = safe_float(latest.get("close")) or 0
+        vol       = safe_float(latest.get("volume")) or 100000
+        tick      = max(round(cur_price * 0.001, 2), 0.01)
+
+        bids = [{"price": round(cur_price - tick * i, 2), "volume": int(vol / (i + 2))}
+                for i in range(1, 4)]
+        asks = [{"price": round(cur_price + tick * i, 2), "volume": int(vol / (i + 2))}
+                for i in range(1, 4)]
+
+        return {
+            "symbol":    symbol,
+            "bids":      bids,
+            "asks":      asks,
+            "note":      "Dữ liệu ước tính (ngoài giờ giao dịch)",
+            "updatedAt": dt.now().strftime("%H:%M:%S"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Orderbook error {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _is_trading_hours() -> bool:
+    """Kiểm tra giờ giao dịch HoSE: 9:00-14:45 thứ 2-6."""
+    from datetime import datetime as dt
+    now = dt.now()
+    if now.weekday() >= 5:
+        return False
+    h, m = now.hour, now.minute
+    return (9, 0) <= (h, m) <= (14, 45)
+
+
+@app.get("/stocks/intraday-chart/{symbol}")
+def get_intraday_chart(
+    symbol: str,
+    days:   int = Query(default=1, ge=1, le=7)
+):
+    """
+    Lấy dữ liệu giá theo từng 15 phút để vẽ intraday chart.
+    - days=1: hôm nay (9:00 → 14:45)
+    - days=7: 7 ngày gần nhất, mỗi ngày chia theo 15 phút
+    VCI interval đúng: "15m"
+    """
+    symbol = symbol.upper().strip()
+    try:
+        from datetime import datetime as dt, timedelta
+
+        end   = dt.now().strftime("%Y-%m-%d")
+        start = (dt.now() - timedelta(days=days + 1)).strftime("%Y-%m-%d")
+
+        stock = get_stock_client().stock(symbol=symbol, source="VCI")
+
+        interval = "5m" if days == 1 else "15m"
+        df = stock.quote.history(start=start, end=end, interval=interval)
+
+        if df is None or df.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Không có dữ liệu intraday cho {symbol}"
+            )
+
+        # Lọc chỉ lấy giờ giao dịch 9:00 – 14:45
+        records = []
+        today_str = dt.now().strftime("%Y-%m-%d")
+
+        for _, row in df.iterrows():
+            ts = row.get("time")
+
+            # Convert Timestamp nếu cần
+            if hasattr(ts, 'strftime'):
+                ts_dt = ts.to_pydatetime() if hasattr(ts, 'to_pydatetime') else ts
+            else:
+                try:
+                    ts_dt = dt.fromisoformat(str(ts))
+                except Exception:
+                    continue
+
+            # Lọc giờ giao dịch: 9:00 – 14:45
+            h, m = ts_dt.hour, ts_dt.minute
+            if not ((9, 0) <= (h, m) <= (14, 45)):
+                continue
+
+            # Lọc số ngày: nếu days=1 chỉ lấy hôm nay
+            date_str = ts_dt.strftime("%Y-%m-%d")
+            if days == 1 and date_str != today_str:
+                continue
+
+            close  = safe_float(row.get("close"))
+            volume = safe_float(row.get("volume"))
+
+            if close is None:
+                continue
+
+            # Label: "HH:MM" nếu 1 ngày, "dd/MM HH:MM" nếu nhiều ngày
+            label = ts_dt.strftime("%H:%M") if days == 1 \
+                    else ts_dt.strftime("%d/%m %H:%M")
+
+            records.append({
+                "label":  label,
+                "date":   date_str,
+                "time":   ts_dt.strftime("%H:%M"),
+                "open":   safe_float(row.get("open")),
+                "high":   safe_float(row.get("high")),
+                "low":    safe_float(row.get("low")),
+                "close":  close,
+                "volume": volume,
+            })
+
+        if not records:
+            raise HTTPException(
+                status_code=404,
+                detail="Không có dữ liệu trong giờ giao dịch (9:00-14:45)"
+            )
+
+        return {
+            "symbol":    symbol,
+            "interval": "5m" if days == 1 else "15m",
+            "days":      days,
+            "data":      records,
+            "count":     len(records),
+            "updatedAt": dt.now().strftime("%H:%M:%S"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Intraday chart error {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

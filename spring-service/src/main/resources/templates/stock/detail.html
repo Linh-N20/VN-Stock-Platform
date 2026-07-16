@@ -4,7 +4,8 @@
 <body>
 <th:block th:fragment="main-content">
 
-<div class="d-flex justify-content-between align-items-center mb-4">
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-3">
     <div>
         <h1 class="h3 fw-bold mb-0" th:text="${symbol}"></h1>
         <a th:href="@{/}" class="text-muted small">
@@ -18,39 +19,70 @@
     </form>
 </div>
 
-<!-- Không có dữ liệu -->
+<!-- Realtime ticker bar -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body py-3">
+        <div class="row g-3 align-items-center">
+            <div class="col-auto">
+                <div class="d-flex align-items-baseline gap-2">
+                    <h2 class="fw-bold mb-0" id="rt-price">—</h2>
+                    <span class="badge fs-6" id="rt-change-badge">—</span>
+                </div>
+                <small class="text-muted" id="rt-updated">Đang tải...</small>
+            </div>
+            <div class="col">
+                <div class="row g-2 text-center">
+                    <div class="col-3 col-sm-2">
+                        <div class="small text-muted">Mở cửa</div>
+                        <div class="fw-semibold small" id="rt-open">—</div>
+                    </div>
+                    <div class="col-3 col-sm-2">
+                        <div class="small text-muted">Cao nhất</div>
+                        <div class="fw-semibold small text-success" id="rt-high">—</div>
+                    </div>
+                    <div class="col-3 col-sm-2">
+                        <div class="small text-muted">Thấp nhất</div>
+                        <div class="fw-semibold small text-danger" id="rt-low">—</div>
+                    </div>
+                    <div class="col-3 col-sm-2">
+                        <div class="small text-muted">Khối lượng</div>
+                        <div class="fw-semibold small" id="rt-volume">—</div>
+                    </div>
+                    <div class="col-12 col-sm-4 text-sm-end">
+                        <span id="rt-trading-badge" class="badge bg-secondary">Ngoài giờ GD</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div th:unless="${hasData}" class="alert alert-warning border-0 rounded-3">
     <i class="bi bi-exclamation-triangle me-2"></i>
     Chưa có dữ liệu cho <strong th:text="${symbol}"></strong>.
-    Đảm bảo Python service đang chạy và mã cổ phiếu hợp lệ.
 </div>
 
 <div th:if="${hasData}">
     <div class="row g-3 mb-4">
 
-        <!-- Tín hiệu chính -->
+        <!-- Tín hiệu -->
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100" th:if="${signal != null}">
                 <div class="card-body text-center p-4">
                     <p class="text-muted small mb-2">Tín hiệu kỹ thuật tổng hợp</p>
-                    <div class="display-4 mb-2"
-                         th:classappend="'text-' + ${signal.signalColor}">
+                    <div class="display-4 mb-2" th:classappend="'text-' + ${signal.signalColor}">
                         <i th:class="'bi ' + ${signal.signalIcon}"></i>
                     </div>
-                    <h2 class="fw-bold mb-1"
-                        th:classappend="'text-' + ${signal.signalColor}"
+                    <h2 class="fw-bold mb-1" th:classappend="'text-' + ${signal.signalColor}"
                         th:text="${signal.signal}"></h2>
-                    <p class="text-muted small mb-3"
-                       th:text="'Điểm tổng hợp: ' + ${signal.score}"></p>
-
+                    <p class="text-muted small mb-3" th:text="'Điểm: ' + ${signal.score}"></p>
                     <div class="bg-light rounded-3 p-3 mb-3" th:if="${signal.currentPrice != null}">
-                        <p class="text-muted small mb-1">Giá gần nhất (VND)</p>
+                        <p class="text-muted small mb-1">Giá phân tích (VND)</p>
                         <h4 class="fw-bold mb-0"
                             th:text="${#numbers.formatDecimal(signal.currentPrice, 1, 2)}"></h4>
                     </div>
-
                     <div class="text-start" th:unless="${reasons.empty}">
-                        <p class="fw-semibold small mb-2">Lý do phân tích:</p>
+                        <p class="fw-semibold small mb-2">Lý do:</p>
                         <ul class="list-unstyled small">
                             <li th:each="r : ${reasons}" class="mb-1 text-muted">
                                 <i class="bi bi-dot me-1"></i><span th:text="${r}"></span>
@@ -59,205 +91,442 @@
                     </div>
                 </div>
             </div>
-
-            <div class="card border-0 shadow-sm h-100" th:unless="${signal != null}">
-                <div class="card-body text-center text-muted p-4">
-                    <i class="bi bi-hourglass-split display-4 d-block mb-3 opacity-50"></i>
-                    Chưa có tín hiệu. Bấm "Cập nhật tín hiệu".
-                </div>
-            </div>
         </div>
 
-        <!-- Indicators -->
-        <div class="col-lg-8" th:if="${signal != null}">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white fw-semibold">
-                    <i class="bi bi-bar-chart me-2"></i>Chỉ số kỹ thuật
+        <!-- Indicators + Order book -->
+        <div class="col-lg-8">
+            <div class="row g-3">
+                <!-- Indicators -->
+                <div class="col-12" th:if="${signal != null}">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white fw-semibold">
+                            <i class="bi bi-bar-chart me-2"></i>Chỉ số kỹ thuật
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-sm-6">
+                                    <div class="p-2 bg-light rounded-3">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span class="small fw-semibold">RSI (14)</span>
+                                            <span class="small fw-bold"
+                                                  th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'text-success' : (${signal.rsi != null and signal.rsi > 70} ? 'text-danger' : 'text-muted')"
+                                                  th:text="${signal.rsi != null} ? ${#numbers.formatDecimal(signal.rsi,1,1)} : '—'">
+                                            </span>
+                                        </div>
+                                        <div class="progress" style="height:6px">
+                                            <div class="progress-bar"
+                                                 th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'bg-success' : (${signal.rsi != null and signal.rsi > 70} ? 'bg-danger' : 'bg-primary')"
+                                                 th:style="'width:' + (${signal.rsi != null} ? ${signal.rsi} : 50) + '%'">
+                                            </div>
+                                        </div>
+                                        <div class="d-flex justify-content-between mt-1">
+                                            <small class="text-success">Quá bán &lt;30</small>
+                                            <small class="text-danger">Quá mua &gt;70</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="p-2 bg-light rounded-3">
+                                        <p class="small fw-semibold mb-1">MACD (12/26/9)</p>
+                                        <div class="d-flex justify-content-between">
+                                            <div>
+                                                <small class="text-muted d-block">MACD</small>
+                                                <span th:classappend="${signal.macd != null and signal.macd > 0} ? 'text-success fw-semibold' : 'text-danger fw-semibold'"
+                                                      th:text="${signal.macd != null} ? ${#numbers.formatDecimal(signal.macd,1,3)} : '—'">
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <small class="text-muted d-block">Signal</small>
+                                                <span th:text="${signal.macdSignal != null} ? ${#numbers.formatDecimal(signal.macdSignal,1,3)} : '—'"></span>
+                                            </div>
+                                            <div>
+                                                <small class="text-muted d-block">MA trend</small>
+                                                <span th:if="${signal.ma20 != null and signal.ma50 != null}"
+                                                      th:classappend="${signal.ma20 > signal.ma50} ? 'text-success fw-bold' : 'text-danger fw-bold'"
+                                                      th:text="${signal.ma20 > signal.ma50} ? '↑ Tăng' : '↓ Giảm'">
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="p-2 bg-light rounded-3">
+                                        <p class="small fw-semibold mb-1">Bollinger Bands</p>
+                                        <div class="d-flex justify-content-between">
+                                            <div>
+                                                <small class="text-muted d-block">Dải trên</small>
+                                                <span class="text-danger fw-semibold small"
+                                                      th:text="${signal.bbUpper != null} ? ${#numbers.formatDecimal(signal.bbUpper,1,2)} : '—'">
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <small class="text-muted d-block">Giá PT</small>
+                                                <span class="fw-bold small"
+                                                      th:text="${signal.currentPrice != null} ? ${#numbers.formatDecimal(signal.currentPrice,1,2)} : '—'">
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <small class="text-muted d-block">Dải dưới</small>
+                                                <span class="text-success fw-semibold small"
+                                                      th:text="${signal.bbLower != null} ? ${#numbers.formatDecimal(signal.bbLower,1,2)} : '—'">
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6">
+                                    <div class="p-2 bg-light rounded-3">
+                                        <p class="small fw-semibold mb-1">MA20 / MA50</p>
+                                        <div class="d-flex justify-content-between">
+                                            <div>
+                                                <small class="text-muted d-block">MA20</small>
+                                                <span class="fw-semibold small"
+                                                      th:text="${signal.ma20 != null} ? ${#numbers.formatDecimal(signal.ma20,1,2)} : '—'">
+                                                </span>
+                                            </div>
+                                            <div>
+                                                <small class="text-muted d-block">MA50</small>
+                                                <span class="fw-semibold small"
+                                                      th:text="${signal.ma50 != null} ? ${#numbers.formatDecimal(signal.ma50,1,2)} : '—'">
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <div class="row g-3">
 
-                        <!-- RSI -->
-                        <div class="col-sm-6">
-                            <div class="p-3 bg-light rounded-3">
-                                <div class="d-flex justify-content-between mb-1">
-                                    <span class="small fw-semibold">RSI (14 phiên)</span>
-                                    <span class="small fw-bold"
-                                          th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'text-success' : (${signal.rsi != null and signal.rsi > 70} ? 'text-danger' : 'text-muted')"
-                                          th:text="${signal.rsi != null} ? ${#numbers.formatDecimal(signal.rsi, 1, 1)} : '—'">
-                                    </span>
-                                </div>
-                                <div class="progress mb-1" style="height:8px">
-                                    <div class="progress-bar"
-                                         th:classappend="${signal.rsi != null and signal.rsi < 30} ? 'bg-success' : (${signal.rsi != null and signal.rsi > 70} ? 'bg-danger' : 'bg-primary')"
-                                         th:style="'width:' + (${signal.rsi != null} ? ${signal.rsi} : 50) + '%'">
-                                    </div>
-                                </div>
-                                <div class="d-flex justify-content-between">
-                                    <small class="text-success">Quá bán &lt;30</small>
-                                    <small class="text-danger">Quá mua &gt;70</small>
-                                </div>
-                            </div>
+                <!-- Order book -->
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <span class="fw-semibold"><i class="bi bi-list-ol me-2"></i>Sổ lệnh</span>
+                            <span class="text-muted small" id="ob-updated">Đang tải...</span>
                         </div>
-
-                        <!-- MACD -->
-                        <div class="col-sm-6">
-                            <div class="p-3 bg-light rounded-3 h-100">
-                                <p class="small fw-semibold mb-2">MACD (12/26/9)</p>
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <small class="text-muted d-block">MACD Line</small>
-                                        <span class="fw-semibold"
-                                              th:classappend="${signal.macd != null and signal.macd > 0} ? 'text-success' : 'text-danger'"
-                                              th:text="${signal.macd != null} ? ${#numbers.formatDecimal(signal.macd, 1, 3)} : '—'">
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">Signal Line</small>
-                                        <span th:text="${signal.macdSignal != null} ? ${#numbers.formatDecimal(signal.macdSignal, 1, 3)} : '—'">
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">Histogram</small>
-                                        <span th:classappend="${signal.macd != null and signal.macdSignal != null and signal.macd > signal.macdSignal} ? 'text-success' : 'text-danger'"
-                                              th:text="${signal.macd != null and signal.macdSignal != null} ? ${#numbers.formatDecimal(signal.macd - signal.macdSignal, 1, 3)} : '—'">
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0 text-center">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th class="text-success">KL Mua</th>
+                                        <th class="text-success">Giá Mua</th>
+                                        <th class="text-danger">Giá Bán</th>
+                                        <th class="text-danger">KL Bán</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="orderBookBody">
+                                    <tr><td colspan="4" class="text-muted py-3">Đang tải...</td></tr>
+                                </tbody>
+                            </table>
+                            <div id="ob-note" class="text-muted small text-center p-2" style="display:none"></div>
                         </div>
-
-                        <!-- Moving Averages -->
-                        <div class="col-sm-6">
-                            <div class="p-3 bg-light rounded-3">
-                                <p class="small fw-semibold mb-2">Moving Averages</p>
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <small class="text-muted d-block">MA20</small>
-                                        <span class="fw-semibold"
-                                              th:text="${signal.ma20 != null} ? ${#numbers.formatDecimal(signal.ma20, 1, 2)} : '—'">
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">MA50</small>
-                                        <span class="fw-semibold"
-                                              th:text="${signal.ma50 != null} ? ${#numbers.formatDecimal(signal.ma50, 1, 2)} : '—'">
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">Xu hướng</small>
-                                        <span th:if="${signal.ma20 != null and signal.ma50 != null}"
-                                              th:classappend="${signal.ma20 > signal.ma50} ? 'text-success fw-bold' : 'text-danger fw-bold'"
-                                              th:text="${signal.ma20 > signal.ma50} ? '↑ Tăng' : '↓ Giảm'">
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Bollinger Bands -->
-                        <div class="col-sm-6">
-                            <div class="p-3 bg-light rounded-3">
-                                <p class="small fw-semibold mb-2">Bollinger Bands (20)</p>
-                                <div class="d-flex justify-content-between">
-                                    <div>
-                                        <small class="text-muted d-block">Dải trên</small>
-                                        <span class="text-danger fw-semibold"
-                                              th:text="${signal.bbUpper != null} ? ${#numbers.formatDecimal(signal.bbUpper, 1, 2)} : '—'">
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">Giá hiện tại</small>
-                                        <span class="fw-bold"
-                                              th:text="${signal.currentPrice != null} ? ${#numbers.formatDecimal(signal.currentPrice, 1, 2)} : '—'">
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <small class="text-muted d-block">Dải dưới</small>
-                                        <span class="text-success fw-semibold"
-                                              th:text="${signal.bbLower != null} ? ${#numbers.formatDecimal(signal.bbLower, 1, 2)} : '—'">
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Biểu đồ giá -->
+    <!-- Biểu đồ -->
     <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white fw-semibold">
-            <i class="bi bi-graph-up me-2"></i>Biểu đồ giá 90 ngày
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+            <div>
+                <span class="fw-semibold"><i class="bi bi-graph-up me-2"></i>Biểu đồ giá</span>
+                <span class="badge bg-light text-dark border ms-2 small" id="chart-interval-badge">Daily</span>
+            </div>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary range-btn" data-mode="intraday" data-days="1">Hôm nay</button>
+                <button class="btn btn-outline-secondary range-btn" data-mode="intraday" data-days="7">1 tuần</button>
+                <button class="btn btn-outline-secondary range-btn" data-mode="daily"    data-days="30">1 tháng</button>
+                <button class="btn btn-outline-secondary range-btn active" data-mode="daily" data-days="90">90 ngày</button>
+            </div>
         </div>
         <div class="card-body">
-            <canvas id="priceChart" height="80"></canvas>
+            <!-- Loading indicator -->
+            <div id="chart-loading" class="text-center py-3 text-muted" style="display:none">
+                <div class="spinner-border spinner-border-sm me-2"></div>Đang tải dữ liệu 15 phút...
+            </div>
+            <canvas id="priceChart" height="70"></canvas>
+            <div class="border-top my-2 opacity-25"></div>
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <small class="text-muted fw-semibold">Khối lượng giao dịch</small>
+                <small class="text-muted">Xanh = tăng · Đỏ = giảm</small>
+            </div>
+            <canvas id="volumeChart" height="25"></canvas>
         </div>
     </div>
 </div>
 
-<!-- Disclaimer -->
 <div class="alert alert-warning border-0 rounded-3 small">
     <i class="bi bi-exclamation-triangle me-2"></i>
-    <strong>Lưu ý quan trọng:</strong> Tín hiệu kỹ thuật chỉ dựa trên dữ liệu lịch sử và công thức toán học.
-    Đây KHÔNG phải lời khuyên đầu tư. Hãy tự nghiên cứu kỹ trước khi đưa ra quyết định.
+    <strong>Lưu ý:</strong> Thông tin mang tính tham khảo kỹ thuật, KHÔNG phải lời khuyên đầu tư.
 </div>
 
-<!-- Data bridge: Thymeleaf → JavaScript -->
+<!-- Data bridge -->
 <div id="chartData"
-     th:attr="data-dates=${datesJson}, data-closes=${closesJson}"
+     th:attr="data-dates=${datesJson}, data-closes=${closesJson}, data-volumes=${volumesJson}, data-symbol=${symbol}"
      style="display:none"></div>
 
 <script>
-    window.addEventListener('load', function() {
-        const el = document.getElementById('chartData');
-        if (!el) return;
+window.addEventListener('load', function () {
+    const el     = document.getElementById('chartData');
+    const SYMBOL = el.getAttribute('data-symbol');
+    const PYTHON = 'http://localhost:8000';
 
-        const dates  = JSON.parse(el.getAttribute('data-dates')  || '[]');
-        const closes = JSON.parse(el.getAttribute('data-closes') || '[]');
+    // Daily data (90 ngày) từ server
+    const dailyDates   = JSON.parse(el.getAttribute('data-dates')   || '[]');
+    const dailyCloses  = JSON.parse(el.getAttribute('data-closes')  || '[]');
+    const dailyVolumes = JSON.parse(el.getAttribute('data-volumes') || '[]');
 
-        if (dates.length === 0) return;
-        const ctx = document.getElementById('priceChart');
-        if (!ctx) return;
+    // Tooltip style chung
+    const tooltipDefaults = {
+        enabled: true,
+        mode: 'index',
+        intersect: false,
+        backgroundColor: 'rgba(15,23,42,0.92)',
+        titleColor: '#94a3b8',
+        bodyColor: '#f1f5f9',
+        borderWidth: 1,
+        padding: 10,
+        displayColors: false,
+    };
 
-        const validCloses = closes.filter(v => v !== null);
-        const minVal = Math.min(...validCloses) * 0.995;
-        const maxVal = Math.max(...validCloses) * 1.005;
+    let priceChart = null, volumeChart = null;
 
-        new Chart(ctx, {
+    // ── Build chart từ arrays ──────────────────────────────────────────────────
+    function buildCharts(labels, closes, volumes, isIntraday) {
+        const valid = closes.filter(v => v !== null);
+        if (!valid.length) return;
+
+        const minVal    = Math.min(...valid) * 0.995;
+        const maxVal    = Math.max(...valid) * 1.005;
+        const volColors = closes.map((c, i) =>
+            i === 0 ? 'rgba(99,102,241,0.6)'
+            : c >= closes[i-1] ? 'rgba(34,197,94,0.7)' : 'rgba(239,68,68,0.7)'
+        );
+
+        if (priceChart)  { priceChart.destroy();  priceChart  = null; }
+        if (volumeChart) { volumeChart.destroy(); volumeChart = null; }
+
+        // Intraday: show point mỗi 15 phút; daily: ẩn point nếu nhiều ngày
+        const pointRadius = isIntraday ? 0 : (labels.length <= 10 ? 4 : 0);
+
+        // Tick limit: intraday hiện ít tick hơn để không bị chật
+        const xTickLimit = isIntraday ? 10 : 8;
+
+        priceChart = new Chart(document.getElementById('priceChart'), {
             type: 'line',
-            data: {
-                labels: dates,
-                datasets: [{
-                    label: 'Giá đóng cửa',
-                    data: closes,
-                    borderColor: '#0d6efd',
-                    backgroundColor: 'rgba(13,110,253,0.06)',
-                    borderWidth: 2,
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 0,
-                    pointHoverRadius: 5,
-                }]
-            },
+            data: { labels, datasets: [{
+                data: closes,
+                borderColor: isIntraday ? '#0ea5e9' : '#4f46e5',
+                backgroundColor: isIntraday ? 'rgba(14,165,233,0.07)' : 'rgba(79,70,229,0.07)',
+                borderWidth: isIntraday ? 1.5 : 2,
+                fill: true, tension: isIntraday ? 0.1 : 0.3,
+                pointRadius,
+                pointHoverRadius: 5,
+                pointHoverBackgroundColor: isIntraday ? '#0ea5e9' : '#4f46e5',
+                pointHoverBorderColor: '#fff',
+                pointHoverBorderWidth: 2,
+            }]},
             options: {
-                responsive: true,
-                interaction: { mode: 'index', intersect: false },
-                plugins: { legend: { display: false } },
+                responsive: true, animation: { duration: 200 },
+                interaction: { mode: 'index', intersect: false, axis: 'x' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltipDefaults,
+                        borderColor: isIntraday ? '#0ea5e9' : '#4f46e5',
+                        callbacks: {
+                            title: ctx => (isIntraday ? '🕐 ' : '📅 ') + ctx[0].label,
+                            label: ctx => '  Giá: ' + ctx.parsed.y.toLocaleString('vi-VN') + ' VND',
+                        }
+                    }
+                },
                 scales: {
-                    x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+                    x: {
+                        grid: { display: false },
+                        ticks: { maxTicksLimit: xTickLimit, font: { size: 11 },
+                            maxRotation: isIntraday ? 45 : 0 }
+                    },
                     y: {
                         min: minVal, max: maxVal,
-                        ticks: { callback: v => v.toLocaleString('vi-VN') },
+                        ticks: { callback: v => v.toLocaleString('vi-VN'), font: { size: 11 }},
                         grid: { color: 'rgba(0,0,0,0.04)' }
                     }
                 }
             }
         });
+
+        volumeChart = new Chart(document.getElementById('volumeChart'), {
+            type: 'bar',
+            data: { labels, datasets: [{
+                data: volumes, backgroundColor: volColors, borderWidth: 0, borderRadius: 2,
+            }]},
+            options: {
+                responsive: true, animation: { duration: 200 },
+                interaction: { mode: 'index', intersect: false, axis: 'x' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltipDefaults, borderColor: '#6b7280',
+                        callbacks: {
+                            title: ctx => (isIntraday ? '🕐 ' : '📅 ') + ctx[0].label,
+                            label: ctx => '  KL: ' + (ctx.parsed.y/1000).toFixed(0) + 'K CP',
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false },
+                         ticks: { maxTicksLimit: xTickLimit, font: { size: 10 },
+                             maxRotation: isIntraday ? 45 : 0 }},
+                    y: { ticks: { callback: v => (v/1000000).toFixed(1)+'M',
+                             font: { size: 10 }, maxTicksLimit: 4 },
+                         grid: { color: 'rgba(0,0,0,0.03)' }}
+                }
+            }
+        });
+    }
+
+    // ── Load daily data ───────────────────────────────────────────────────────
+    function loadDailyChart(days) {
+        const n       = Math.min(days, dailyDates.length);
+        const labels  = dailyDates.slice(-n);
+        const closes  = dailyCloses.slice(-n);
+        const volumes = dailyVolumes.slice(-n);
+
+        document.getElementById('chart-interval-badge').textContent = 'Daily';
+        buildCharts(labels, closes, volumes, false);
+    }
+
+    // ── Load intraday 15-min data từ Python ───────────────────────────────────
+    async function loadIntradayChart(days) {
+        const loading = document.getElementById('chart-loading');
+        const badge   = document.getElementById('chart-interval-badge');
+
+        loading.style.display = 'block';
+        badge.textContent = days === 1 ? '5 phút · Hôm nay' : '15 phút · 7 ngày';
+
+        try {
+            const res  = await fetch(`${PYTHON}/stocks/intraday-chart/${SYMBOL}?days=${days}`);
+            const data = await res.json();
+
+            if (data.detail || !data.data || data.data.length === 0) {
+                badge.textContent = 'Không có dữ liệu intraday';
+                loading.style.display = 'none';
+                // Fallback về daily
+                loadDailyChart(days === 1 ? 5 : 30);
+                return;
+            }
+
+            const labels  = data.data.map(d => d.label);
+            const closes  = data.data.map(d => d.close);
+            const volumes = data.data.map(d => d.volume);
+
+            loading.style.display = 'none';
+            buildCharts(labels, closes, volumes, true);
+
+        } catch (err) {
+            loading.style.display = 'none';
+            badge.textContent = 'Lỗi tải dữ liệu';
+            loadDailyChart(days === 1 ? 5 : 30);
+        }
+    }
+
+    // Khởi tạo: 90 ngày daily
+    loadDailyChart(90);
+
+    // Range buttons
+    document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+
+            const mode = this.dataset.mode;
+            const days = parseInt(this.dataset.days);
+
+            if (mode === 'intraday') {
+                loadIntradayChart(days);
+            } else {
+                loadDailyChart(days);
+            }
+        });
     });
+
+    // ── Realtime ticker ───────────────────────────────────────────────────────
+    function updateTicker() {
+        fetch(PYTHON + '/stocks/intraday/' + SYMBOL)
+            .then(r => r.json())
+            .then(d => {
+                if (d.detail) {
+                    document.getElementById('rt-updated').textContent = 'Không thể kết nối Python service';
+                    return;
+                }
+                document.getElementById('rt-price').textContent =
+                    d.currentPrice ? d.currentPrice.toLocaleString('vi-VN') + ' VND' : '—';
+
+                const badge = document.getElementById('rt-change-badge');
+                if (d.changePct !== null && d.changePct !== undefined) {
+                    const up = d.changePct >= 0;
+                    badge.className   = 'badge fs-6 ' + (up ? 'bg-success' : 'bg-danger');
+                    badge.textContent = (up ? '+' : '') + d.changePct.toFixed(2) + '%'
+                        + '  (' + (up ? '+' : '') + (d.change || 0).toLocaleString('vi-VN') + ')';
+                }
+
+                document.getElementById('rt-open').textContent   = d.openPrice ? d.openPrice.toLocaleString('vi-VN') : '—';
+                document.getElementById('rt-high').textContent   = d.highPrice  ? d.highPrice.toLocaleString('vi-VN')  : '—';
+                document.getElementById('rt-low').textContent    = d.lowPrice   ? d.lowPrice.toLocaleString('vi-VN')   : '—';
+                document.getElementById('rt-volume').textContent = d.volume
+                    ? (d.volume >= 1000000 ? (d.volume/1000000).toFixed(2)+'M' : (d.volume/1000).toFixed(0)+'K')
+                    : '—';
+                document.getElementById('rt-updated').textContent = 'Cập nhật lúc ' + (d.updatedAt || '');
+
+                const tb = document.getElementById('rt-trading-badge');
+                if (d.isTrading) {
+                    tb.className = 'badge bg-success'; tb.textContent = '● Đang giao dịch';
+                } else {
+                    tb.className = 'badge bg-secondary'; tb.textContent = 'Ngoài giờ GD';
+                }
+            })
+            .catch(() => {
+                document.getElementById('rt-updated').textContent = 'Không thể kết nối Python service';
+            });
+    }
+
+    // ── Order book ────────────────────────────────────────────────────────────
+    function updateOrderBook() {
+        fetch(PYTHON + '/stocks/orderbook/' + SYMBOL)
+            .then(r => r.json())
+            .then(d => {
+                const tbody = document.getElementById('orderBookBody');
+                const bids = d.bids || [], asks = d.asks || [];
+                const rows = Math.max(bids.length, asks.length, 3);
+                let html = '';
+                for (let i = 0; i < rows; i++) {
+                    const bid = bids[i], ask = asks[i];
+                    html += '<tr>';
+                    html += bid
+                        ? `<td class="text-success fw-semibold">${(bid.volume/1000).toFixed(0)}K</td>
+                           <td class="text-success fw-bold">${bid.price.toLocaleString('vi-VN')}</td>`
+                        : '<td>—</td><td>—</td>';
+                    html += ask
+                        ? `<td class="text-danger fw-bold">${ask.price.toLocaleString('vi-VN')}</td>
+                           <td class="text-danger fw-semibold">${(ask.volume/1000).toFixed(0)}K</td>`
+                        : '<td>—</td><td>—</td>';
+                    html += '</tr>';
+                }
+                tbody.innerHTML = html;
+                document.getElementById('ob-updated').textContent = 'Cập nhật ' + (d.updatedAt || '');
+                const noteEl = document.getElementById('ob-note');
+                if (d.note) { noteEl.style.display='block'; noteEl.textContent='⚠ '+d.note; }
+                else { noteEl.style.display='none'; }
+            })
+            .catch(() => { document.getElementById('ob-updated').textContent = 'Lỗi kết nối'; });
+    }
+
+    updateTicker();
+    updateOrderBook();
+    setInterval(() => { updateTicker(); updateOrderBook(); }, 600_000);
+});
 </script>
 
 </th:block>
