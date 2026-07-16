@@ -37,9 +37,30 @@ jobs:
       - name: Start service & health check
         working-directory: python-service
         run: |
-          uvicorn main:app --host 0.0.0.0 --port 8000 &
-          sleep 5
-          curl -f http://localhost:8000/health && echo "Health check passed"
+          # Start FastAPI in background
+          uvicorn main:app --host 0.0.0.0 --port 8000 > uvicorn.log 2>&1 &
+          SERVER_PID=$!
+
+          echo "Waiting for FastAPI to start..."
+
+          # Wait up to 30 seconds
+          for i in {1..30}; do
+            if curl -fs http://127.0.0.1:8000/health > /dev/null; then
+              echo "✅ Health check passed!"
+              kill $SERVER_PID
+              exit 0
+            fi
+
+            echo "Waiting... ($i/30)"
+            sleep 1
+          done
+
+          echo "❌ Server failed to start."
+          echo "========== UVICORN LOG =========="
+          cat uvicorn.log
+
+          kill $SERVER_PID || true
+          exit 1
 
   # ══════════════════════════════════════════════════════
   # JOB 2: Build Spring Boot
