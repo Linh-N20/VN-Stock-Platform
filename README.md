@@ -260,6 +260,18 @@ cd VN-Stock-Platform
 
 ---
 
+## Environment Variables
+
+Before running the project, create a `.env` file from the example:
+
+```bash
+cp .env.example .env
+```
+
+Then update the values inside `.env`.
+
+---
+
 ## Start Python Service
 
 ```bash

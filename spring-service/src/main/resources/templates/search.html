@@ -5,36 +5,60 @@
 <th:block th:fragment="main-content">
 
 <div class="mb-4">
-    <h1 class="h3 fw-bold mb-0">Kết quả tìm kiếm</h1>
-    <small class="text-muted">Từ khoá: "<span th:text="${query}"></span>"</small>
+    <h1 class="h3 fw-bold mb-1">Kết quả tìm kiếm</h1>
+    <p class="text-muted" th:text="'Từ khoá: ' + ${query}"></p>
 </div>
 
-<div th:if="${results.empty}" class="text-center py-5 text-muted">
+<!-- Lỗi -->
+<div th:if="${error}" class="alert alert-warning border-0 rounded-3">
+    <i class="bi bi-exclamation-triangle me-2"></i>
+    <span th:text="${error}"></span>
+</div>
+
+<!-- Không có kết quả -->
+<div th:if="${results != null and results.empty}" class="text-center py-5 text-muted">
     <i class="bi bi-search display-4 d-block mb-3 opacity-50"></i>
-    <p>Không tìm thấy cổ phiếu nào khớp với "<strong th:text="${query}"></strong>"</p>
-    <a th:href="@{/}" class="btn btn-outline-primary btn-sm">Về Dashboard</a>
+    <p>Không tìm thấy cổ phiếu nào với từ khoá "<span th:text="${query}"></span>"</p>
+    <a th:href="@{/}" class="btn btn-outline-primary mt-2">
+        <i class="bi bi-house me-1"></i>Về trang chủ
+    </a>
 </div>
 
-<div class="row g-3" th:unless="${results.empty}">
-    <div class="col-md-4 col-lg-3" th:each="stock : ${results}">
-        <a th:href="@{/stocks/{s}(s=${stock.symbol})}" class="text-decoration-none">
-            <div class="card border-0 shadow-sm h-100 hover-card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h5 class="fw-bold text-primary mb-1" th:text="${stock.symbol}"></h5>
-                            <p class="text-muted small mb-2" th:text="${stock.name}"></p>
-                        </div>
-                        <span class="badge bg-light text-dark border"
-                              th:text="${stock.exchange}"></span>
-                    </div>
-                    <div class="text-end mt-2">
-                        <small class="text-muted">Xem phân tích <i class="bi bi-arrow-right"></i></small>
-                    </div>
+<!-- Danh sách kết quả -->
+<div th:if="${results != null and !results.empty}" class="row g-3">
+    <div th:each="stock : ${results}" class="col-md-6 col-lg-4">
+        <a th:href="@{/stocks/{s}(s=${stock['symbol']})}"
+           class="card border-0 shadow-sm text-decoration-none hover-card h-100">
+            <div class="card-body d-flex align-items-center gap-3 p-3">
+                <div class="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center
+                            justify-content-center flex-shrink-0"
+                     style="width:48px;height:48px">
+                    <span class="fw-bold text-primary small" th:text="${stock['symbol']}"></span>
                 </div>
+                <div>
+                    <div class="fw-bold" th:text="${stock['symbol']}"></div>
+                    <div class="small text-muted" th:text="${stock['name']}"></div>
+                    <span class="badge bg-light text-dark border small mt-1"
+                          th:text="${stock['exchange']}"></span>
+                    <span class="badge bg-light text-dark border small mt-1 ms-1"
+                          th:text="${stock['sector']}"></span>
+                </div>
+                <i class="bi bi-arrow-right ms-auto text-muted"></i>
             </div>
         </a>
     </div>
+</div>
+
+<!-- Search lại -->
+<div class="mt-4">
+    <form th:action="@{/search}" method="get" class="d-flex gap-2" style="max-width:400px">
+        <input type="text" name="q" class="form-control"
+               placeholder="Tìm mã cổ phiếu hoặc tên công ty..."
+               th:value="${query}" autofocus>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-search"></i>
+        </button>
+    </form>
 </div>
 
 </th:block>

@@ -4,6 +4,30 @@
 <body>
 <th:block th:fragment="main-content">
 
+<style>
+/* Flash animation khi giá cập nhật */
+@keyframes tickerFlash {
+    0%   { box-shadow: 0 0 0 0 rgba(234,179,8,0); border-color: transparent; }
+    30%  { box-shadow: 0 0 0 6px rgba(234,179,8,0.5); border-color: #eab308; }
+    100% { box-shadow: 0 0 0 0 rgba(234,179,8,0); border-color: transparent; }
+}
+@keyframes priceJump {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.12); color: #eab308; }
+    100% { transform: scale(1); }
+}
+.ticker-flash {
+    animation: tickerFlash 1s ease-out forwards;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    transition: border-color 0.2s;
+}
+.price-flash {
+    animation: priceJump 0.6s ease-out forwards;
+    display: inline-block;
+}
+</style>
+
 <!-- Header -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -20,7 +44,7 @@
 </div>
 
 <!-- Realtime ticker bar -->
-<div class="card border-0 shadow-sm mb-4">
+<div class="card border-0 shadow-sm mb-4" id="ticker-card">
     <div class="card-body py-3">
         <div class="row g-3 align-items-center">
             <div class="col-auto">
@@ -64,7 +88,6 @@
 
 <div th:if="${hasData}">
     <div class="row g-3 mb-4">
-
         <!-- Tín hiệu -->
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100" th:if="${signal != null}">
@@ -237,14 +260,13 @@
             <div class="btn-group btn-group-sm">
                 <button class="btn btn-outline-secondary range-btn" data-mode="intraday" data-days="1">Hôm nay</button>
                 <button class="btn btn-outline-secondary range-btn" data-mode="intraday" data-days="7">1 tuần</button>
-                <button class="btn btn-outline-secondary range-btn" data-mode="daily"    data-days="30">1 tháng</button>
+                <button class="btn btn-outline-secondary range-btn" data-mode="daily" data-days="30">1 tháng</button>
                 <button class="btn btn-outline-secondary range-btn active" data-mode="daily" data-days="90">90 ngày</button>
             </div>
         </div>
         <div class="card-body">
-            <!-- Loading indicator -->
             <div id="chart-loading" class="text-center py-3 text-muted" style="display:none">
-                <div class="spinner-border spinner-border-sm me-2"></div>Đang tải dữ liệu 15 phút...
+                <div class="spinner-border spinner-border-sm me-2"></div>Đang tải dữ liệu...
             </div>
             <canvas id="priceChart" height="70"></canvas>
             <div class="border-top my-2 opacity-25"></div>
@@ -273,27 +295,19 @@ window.addEventListener('load', function () {
     const SYMBOL = el.getAttribute('data-symbol');
     const PYTHON = 'http://localhost:8000';
 
-    // Daily data (90 ngày) từ server
     const dailyDates   = JSON.parse(el.getAttribute('data-dates')   || '[]');
     const dailyCloses  = JSON.parse(el.getAttribute('data-closes')  || '[]');
     const dailyVolumes = JSON.parse(el.getAttribute('data-volumes') || '[]');
 
-    // Tooltip style chung
     const tooltipDefaults = {
-        enabled: true,
-        mode: 'index',
-        intersect: false,
+        enabled: true, mode: 'index', intersect: false,
         backgroundColor: 'rgba(15,23,42,0.92)',
-        titleColor: '#94a3b8',
-        bodyColor: '#f1f5f9',
-        borderWidth: 1,
-        padding: 10,
-        displayColors: false,
+        titleColor: '#94a3b8', bodyColor: '#f1f5f9',
+        borderWidth: 1, padding: 10, displayColors: false,
     };
 
     let priceChart = null, volumeChart = null;
 
-    // ── Build chart từ arrays ──────────────────────────────────────────────────
     function buildCharts(labels, closes, volumes, isIntraday) {
         const valid = closes.filter(v => v !== null);
         if (!valid.length) return;
@@ -308,11 +322,8 @@ window.addEventListener('load', function () {
         if (priceChart)  { priceChart.destroy();  priceChart  = null; }
         if (volumeChart) { volumeChart.destroy(); volumeChart = null; }
 
-        // Intraday: show point mỗi 15 phút; daily: ẩn point nếu nhiều ngày
         const pointRadius = isIntraday ? 0 : (labels.length <= 10 ? 4 : 0);
-
-        // Tick limit: intraday hiện ít tick hơn để không bị chật
-        const xTickLimit = isIntraday ? 10 : 8;
+        const xTickLimit  = isIntraday ? 10 : 8;
 
         priceChart = new Chart(document.getElementById('priceChart'), {
             type: 'line',
@@ -322,19 +333,16 @@ window.addEventListener('load', function () {
                 backgroundColor: isIntraday ? 'rgba(14,165,233,0.07)' : 'rgba(79,70,229,0.07)',
                 borderWidth: isIntraday ? 1.5 : 2,
                 fill: true, tension: isIntraday ? 0.1 : 0.3,
-                pointRadius,
-                pointHoverRadius: 5,
+                pointRadius, pointHoverRadius: 5,
                 pointHoverBackgroundColor: isIntraday ? '#0ea5e9' : '#4f46e5',
-                pointHoverBorderColor: '#fff',
-                pointHoverBorderWidth: 2,
+                pointHoverBorderColor: '#fff', pointHoverBorderWidth: 2,
             }]},
             options: {
                 responsive: true, animation: { duration: 200 },
                 interaction: { mode: 'index', intersect: false, axis: 'x' },
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        ...tooltipDefaults,
+                    tooltip: { ...tooltipDefaults,
                         borderColor: isIntraday ? '#0ea5e9' : '#4f46e5',
                         callbacks: {
                             title: ctx => (isIntraday ? '🕐 ' : '📅 ') + ctx[0].label,
@@ -343,16 +351,12 @@ window.addEventListener('load', function () {
                     }
                 },
                 scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: { maxTicksLimit: xTickLimit, font: { size: 11 },
-                            maxRotation: isIntraday ? 45 : 0 }
-                    },
-                    y: {
-                        min: minVal, max: maxVal,
-                        ticks: { callback: v => v.toLocaleString('vi-VN'), font: { size: 11 }},
-                        grid: { color: 'rgba(0,0,0,0.04)' }
-                    }
+                    x: { grid: { display: false },
+                         ticks: { maxTicksLimit: xTickLimit, font: { size: 11 },
+                             maxRotation: isIntraday ? 45 : 0 }},
+                    y: { min: minVal, max: maxVal,
+                         ticks: { callback: v => v.toLocaleString('vi-VN'), font: { size: 11 }},
+                         grid: { color: 'rgba(0,0,0,0.04)' }}
                 }
             }
         });
@@ -367,8 +371,7 @@ window.addEventListener('load', function () {
                 interaction: { mode: 'index', intersect: false, axis: 'x' },
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        ...tooltipDefaults, borderColor: '#6b7280',
+                    tooltip: { ...tooltipDefaults, borderColor: '#6b7280',
                         callbacks: {
                             title: ctx => (isIntraday ? '🕐 ' : '📅 ') + ctx[0].label,
                             label: ctx => '  KL: ' + (ctx.parsed.y/1000).toFixed(0) + 'K CP',
@@ -387,24 +390,17 @@ window.addEventListener('load', function () {
         });
     }
 
-    // ── Load daily data ───────────────────────────────────────────────────────
     function loadDailyChart(days) {
-        const n       = Math.min(days, dailyDates.length);
-        const labels  = dailyDates.slice(-n);
-        const closes  = dailyCloses.slice(-n);
-        const volumes = dailyVolumes.slice(-n);
-
+        const n = Math.min(days, dailyDates.length);
         document.getElementById('chart-interval-badge').textContent = 'Daily';
-        buildCharts(labels, closes, volumes, false);
+        buildCharts(dailyDates.slice(-n), dailyCloses.slice(-n), dailyVolumes.slice(-n), false);
     }
 
-    // ── Load intraday 15-min data từ Python ───────────────────────────────────
     async function loadIntradayChart(days) {
         const loading = document.getElementById('chart-loading');
         const badge   = document.getElementById('chart-interval-badge');
-
         loading.style.display = 'block';
-        badge.textContent = days === 1 ? '5 phút · Hôm nay' : '15 phút · 7 ngày';
+        badge.textContent = 'Đang tải...';
 
         try {
             const res  = await fetch(`${PYTHON}/stocks/intraday-chart/${SYMBOL}?days=${days}`);
@@ -413,18 +409,31 @@ window.addEventListener('load', function () {
             if (data.detail || !data.data || data.data.length === 0) {
                 badge.textContent = 'Không có dữ liệu intraday';
                 loading.style.display = 'none';
-                // Fallback về daily
                 loadDailyChart(days === 1 ? 5 : 30);
                 return;
             }
 
-            const labels  = data.data.map(d => d.label);
-            const closes  = data.data.map(d => d.close);
-            const volumes = data.data.map(d => d.volume);
+            // Cập nhật badge và nút với labelDay từ API
+            const labelDay = data.labelDay || (days === 1 ? 'Hôm nay' : `${days} ngày`);
+            const interval = data.interval || (days === 1 ? '5m' : '15m');
+            badge.textContent = interval + ' · ' + labelDay;
+
+            // Nếu cuối tuần → đổi text nút "Hôm nay" thành "Thứ 6"
+            if (days === 1 && data.isWeekend) {
+                const todayBtn = document.querySelector('.range-btn[data-days="1"]');
+                if (todayBtn) todayBtn.textContent = 'Thứ 6';
+            } else if (days === 1) {
+                const todayBtn = document.querySelector('.range-btn[data-days="1"]');
+                if (todayBtn) todayBtn.textContent = 'Hôm nay';
+            }
 
             loading.style.display = 'none';
-            buildCharts(labels, closes, volumes, true);
-
+            buildCharts(
+                data.data.map(d => d.label),
+                data.data.map(d => d.close),
+                data.data.map(d => d.volume),
+                true
+            );
         } catch (err) {
             loading.style.display = 'none';
             badge.textContent = 'Lỗi tải dữ liệu';
@@ -432,27 +441,48 @@ window.addEventListener('load', function () {
         }
     }
 
-    // Khởi tạo: 90 ngày daily
     loadDailyChart(90);
 
-    // Range buttons
+    // Kiểm tra cuối tuần → đổi text nút "Hôm nay" → "Thứ 6" ngay khi load
+    (function checkWeekend() {
+        const day = new Date().getDay(); // 0=CN, 6=T7
+        if (day === 0 || day === 6) {
+            const todayBtn = document.querySelector('.range-btn[data-days="1"]');
+            if (todayBtn) todayBtn.textContent = 'Thứ 6';
+        }
+    })();
+
     document.querySelectorAll('.range-btn').forEach(btn => {
         btn.addEventListener('click', function () {
             document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-
             const mode = this.dataset.mode;
             const days = parseInt(this.dataset.days);
-
-            if (mode === 'intraday') {
-                loadIntradayChart(days);
-            } else {
-                loadDailyChart(days);
-            }
+            if (mode === 'intraday') loadIntradayChart(days);
+            else loadDailyChart(days);
         });
     });
 
-    // ── Realtime ticker ───────────────────────────────────────────────────────
+    // ── Flash animation khi cập nhật ─────────────────────────────────────────
+    function flashUpdate(elementId, newValue, colorClass) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        const oldValue = el.textContent;
+        el.textContent = newValue;
+
+        if (oldValue !== newValue && oldValue !== '—') {
+            el.classList.remove('price-flash');
+            void el.offsetWidth; // reflow để reset animation
+            el.classList.add('price-flash');
+            setTimeout(() => el.classList.remove('price-flash'), 600);
+        }
+        if (colorClass) {
+            el.classList.remove('text-success', 'text-danger', 'text-muted');
+            el.classList.add(colorClass);
+        }
+    }
+
+    // ── Realtime ticker — refresh 5 phút / lần ───────────────────────────────
     function updateTicker() {
         fetch(PYTHON + '/stocks/intraday/' + SYMBOL)
             .then(r => r.json())
@@ -461,8 +491,21 @@ window.addEventListener('load', function () {
                     document.getElementById('rt-updated').textContent = 'Không thể kết nối Python service';
                     return;
                 }
-                document.getElementById('rt-price').textContent =
-                    d.currentPrice ? d.currentPrice.toLocaleString('vi-VN') + ' VND' : '—';
+
+                const priceStr = d.currentPrice
+                    ? d.currentPrice.toLocaleString('vi-VN') + ' VND' : '—';
+
+                // Flash toàn bộ card với viền vàng
+                const card = document.getElementById('ticker-card');
+                if (card && document.getElementById('rt-price').textContent !== '—') {
+                    card.classList.remove('ticker-flash');
+                    void card.offsetWidth;
+                    card.classList.add('ticker-flash');
+                    setTimeout(() => card.classList.remove('ticker-flash'), 1000);
+                }
+
+                // Giá nhảy số
+                flashUpdate('rt-price', priceStr, null);
 
                 const badge = document.getElementById('rt-change-badge');
                 if (d.changePct !== null && d.changePct !== undefined) {
@@ -472,12 +515,13 @@ window.addEventListener('load', function () {
                         + '  (' + (up ? '+' : '') + (d.change || 0).toLocaleString('vi-VN') + ')';
                 }
 
-                document.getElementById('rt-open').textContent   = d.openPrice ? d.openPrice.toLocaleString('vi-VN') : '—';
-                document.getElementById('rt-high').textContent   = d.highPrice  ? d.highPrice.toLocaleString('vi-VN')  : '—';
-                document.getElementById('rt-low').textContent    = d.lowPrice   ? d.lowPrice.toLocaleString('vi-VN')   : '—';
-                document.getElementById('rt-volume').textContent = d.volume
+                flashUpdate('rt-open',   d.openPrice ? d.openPrice.toLocaleString('vi-VN') : '—', null);
+                flashUpdate('rt-high',   d.highPrice ? d.highPrice.toLocaleString('vi-VN')  : '—', 'text-success');
+                flashUpdate('rt-low',    d.lowPrice  ? d.lowPrice.toLocaleString('vi-VN')   : '—', 'text-danger');
+                flashUpdate('rt-volume', d.volume
                     ? (d.volume >= 1000000 ? (d.volume/1000000).toFixed(2)+'M' : (d.volume/1000).toFixed(0)+'K')
-                    : '—';
+                    : '—', null);
+
                 document.getElementById('rt-updated').textContent = 'Cập nhật lúc ' + (d.updatedAt || '');
 
                 const tb = document.getElementById('rt-trading-badge');
@@ -523,9 +567,15 @@ window.addEventListener('load', function () {
             .catch(() => { document.getElementById('ob-updated').textContent = 'Lỗi kết nối'; });
     }
 
+    // Load lần đầu
     updateTicker();
     updateOrderBook();
-    setInterval(() => { updateTicker(); updateOrderBook(); }, 600_000);
+
+    // Auto-refresh mỗi 5 phút (300,000ms)
+    setInterval(() => {
+        updateTicker();
+        updateOrderBook();
+    }, 300_000);
 });
 </script>
 

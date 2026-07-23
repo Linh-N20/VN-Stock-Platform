@@ -22,6 +22,43 @@ _market_cache: dict = {}          # symbol -> row data
 _cache_time:   dict = {}          # symbol -> timestamp
 CACHE_TTL = 3600                  # 1 giờ — dữ liệu cuối ngày không cần refresh liên tục
 
+from functools import lru_cache
+import time
+
+# ── In-memory cache với TTL ────────────────────────────────────────────────────
+_history_cache: dict = {}   # symbol -> {"data": df, "ts": timestamp}
+_signal_cache:  dict = {}   # symbol -> {"data": result, "ts": timestamp}
+HISTORY_TTL = 3600          # 1 giờ — dữ liệu lịch sử không đổi trong ngày
+SIGNAL_TTL  = 1800          # 30 phút — tín hiệu cần fresh hơn
+
+def get_cached_history(symbol: str, days: int):
+    """Lấy history từ cache nếu còn hạn."""
+    key = f"{symbol}_{days}"
+    now = time.time()
+    if key in _history_cache:
+        entry = _history_cache[key]
+        if now - entry["ts"] < HISTORY_TTL:
+            return entry["data"]
+    return None
+
+def set_cached_history(symbol: str, days: int, df):
+    """Lưu history vào cache."""
+    key = f"{symbol}_{days}"
+    _history_cache[key] = {"data": df, "ts": time.time()}
+
+def get_cached_signal(symbol: str):
+    """Lấy signal từ cache nếu còn hạn."""
+    now = time.time()
+    if symbol in _signal_cache:
+        entry = _signal_cache[symbol]
+        if now - entry["ts"] < SIGNAL_TTL:
+            return entry["data"]
+    return None
+
+def set_cached_signal(symbol: str, result: dict):
+    """Lưu signal vào cache."""
+    _signal_cache[symbol] = {"data": result, "ts": time.time()}
+
 app = FastAPI(
     title="VNStock Data Service",
     description="Dữ liệu chứng khoán Việt Nam từ VCI",
@@ -65,13 +102,25 @@ def safe_float(val) -> Optional[float]:
 
 
 def fetch_history_df(symbol: str, days: int):
-    """Helper: lấy DataFrame lịch sử giá."""
+    """Helper: lấy DataFrame lịch sử giá — có cache TTL 1 giờ."""
+    # Kiểm tra cache trước
+    cached = get_cached_history(symbol, days)
+    if cached is not None:
+        logger.info(f"Cache hit: history {symbol} {days}d")
+        return cached
+
+    # Cache miss → gọi VCI API
+    logger.info(f"Cache miss: fetching history {symbol} {days}d from VCI")
     stock = get_stock_client().stock(symbol=symbol, source="VCI")
     start = (datetime.now() - timedelta(days=days + 60)).strftime("%Y-%m-%d")
     end   = datetime.now().strftime("%Y-%m-%d")
     df    = stock.quote.history(start=start, end=end, interval="1D")
+
     if df is None or df.empty:
         raise HTTPException(status_code=404, detail=f"Không có dữ liệu cho {symbol}")
+
+    # Lưu vào cache
+    set_cached_history(symbol, days, df)
     return df
 
 
@@ -256,8 +305,15 @@ def get_history(symbol: str, days: int = Query(default=90, ge=7, le=365)):
 
 @app.get("/stocks/indicators/{symbol}")
 def get_indicators(symbol: str, days: int = Query(default=90, ge=30, le=365)):
-    """RSI, MACD, Bollinger Bands + tín hiệu BUY/HOLD/SELL."""
+    """RSI, MACD, Bollinger Bands + tín hiệu BUY/HOLD/SELL — có cache 30 phút."""
     symbol = symbol.upper().strip()
+
+    # Kiểm tra cache signal
+    cached = get_cached_signal(symbol)
+    if cached is not None:
+        logger.info(f"Cache hit: signal {symbol}")
+        return cached
+
     try:
         df   = fetch_history_df(symbol, days)
         ind  = compute_indicators(df)
@@ -278,8 +334,8 @@ def get_indicators(symbol: str, days: int = Query(default=90, ge=30, le=365)):
             ma20_val, ma50_val, bb_up_val, bb_dn_val
         )
 
-        info = get_stock_info(symbol)
-        return {
+        info   = get_stock_info(symbol)
+        result = {
             "symbol":       symbol,
             "name":         info.get("name", symbol),
             "sector":       info.get("sector", ""),
@@ -300,6 +356,11 @@ def get_indicators(symbol: str, days: int = Query(default=90, ge=30, le=365)):
             "disclaimer":   "Thông tin tham khảo kỹ thuật, KHÔNG phải lời khuyên đầu tư.",
             "calculatedAt": datetime.now().isoformat()
         }
+
+        # Lưu vào cache
+        set_cached_signal(symbol, result)
+        return result
+
     except HTTPException:
         raise
     except Exception as e:
@@ -585,63 +646,76 @@ def get_intraday_chart(
     symbol: str,
     days:   int = Query(default=1, ge=1, le=7)
 ):
-    """
-    Lấy dữ liệu giá theo từng 15 phút để vẽ intraday chart.
-    - days=1: hôm nay (9:00 → 14:45)
-    - days=7: 7 ngày gần nhất, mỗi ngày chia theo 15 phút
-    VCI interval đúng: "15m"
-    """
     symbol = symbol.upper().strip()
     try:
         from datetime import datetime as dt, timedelta
 
-        end   = dt.now().strftime("%Y-%m-%d")
-        start = (dt.now() - timedelta(days=days + 1)).strftime("%Y-%m-%d")
+        now     = dt.now()
+        weekday = now.weekday()  # 0=T2 ... 4=T6, 5=T7, 6=CN
+
+        # ── Tìm ngày giao dịch gần nhất ───────────────────────────────────────
+        if weekday == 5:      # Thứ 7
+            last_trading = now - timedelta(days=1)
+            is_weekend, label_day = True, "Thứ 6"
+        elif weekday == 6:    # Chủ nhật
+            last_trading = now - timedelta(days=2)
+            is_weekend, label_day = True, "Thứ 6"
+        else:
+            last_trading = now
+            is_weekend, label_day = False, "Hôm nay"
+
+        # ── Tính danh sách N ngày giao dịch hợp lệ ────────────────────────────
+        # Đi ngược từ last_trading, bỏ T7(5) và CN(6)
+        valid_dates = []
+        cursor = last_trading
+        while len(valid_dates) < days:
+            if cursor.weekday() < 5:  # T2–T6
+                valid_dates.append(cursor.strftime("%Y-%m-%d"))
+            cursor -= timedelta(days=1)
+
+        valid_dates_set = set(valid_dates)  # để lookup O(1)
+
+        # ── Fetch từ ngày cũ nhất trong valid_dates ────────────────────────────
+        fetch_start = min(valid_dates)
+        fetch_end   = max(valid_dates)
+        interval    = "5m" if days == 1 else "15m"
 
         stock = get_stock_client().stock(symbol=symbol, source="VCI")
-
-        interval = "5m" if days == 1 else "15m"
-        df = stock.quote.history(start=start, end=end, interval=interval)
+        df    = stock.quote.history(start=fetch_start, end=fetch_end, interval=interval)
 
         if df is None or df.empty:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Không có dữ liệu intraday cho {symbol}"
-            )
+            raise HTTPException(status_code=404,
+                detail=f"Không có dữ liệu intraday cho {symbol}")
 
-        # Lọc chỉ lấy giờ giao dịch 9:00 – 14:45
+        # ── Lọc chỉ lấy đúng các ngày trong valid_dates + giờ GD ──────────────
         records = []
-        today_str = dt.now().strftime("%Y-%m-%d")
-
         for _, row in df.iterrows():
             ts = row.get("time")
 
-            # Convert Timestamp nếu cần
-            if hasattr(ts, 'strftime'):
-                ts_dt = ts.to_pydatetime() if hasattr(ts, 'to_pydatetime') else ts
+            if hasattr(ts, 'to_pydatetime'):
+                ts_dt = ts.to_pydatetime()
+            elif isinstance(ts, str):
+                try:    ts_dt = dt.fromisoformat(ts)
+                except: continue
             else:
-                try:
-                    ts_dt = dt.fromisoformat(str(ts))
-                except Exception:
-                    continue
+                continue
 
-            # Lọc giờ giao dịch: 9:00 – 14:45
+            date_str = ts_dt.strftime("%Y-%m-%d")
+
+            # Chỉ lấy đúng các ngày trong danh sách
+            if date_str not in valid_dates_set:
+                continue
+
+            # Giờ giao dịch 9:00 – 14:45
             h, m = ts_dt.hour, ts_dt.minute
             if not ((9, 0) <= (h, m) <= (14, 45)):
                 continue
 
-            # Lọc số ngày: nếu days=1 chỉ lấy hôm nay
-            date_str = ts_dt.strftime("%Y-%m-%d")
-            if days == 1 and date_str != today_str:
-                continue
-
             close  = safe_float(row.get("close"))
             volume = safe_float(row.get("volume"))
-
             if close is None:
                 continue
 
-            # Label: "HH:MM" nếu 1 ngày, "dd/MM HH:MM" nếu nhiều ngày
             label = ts_dt.strftime("%H:%M") if days == 1 \
                     else ts_dt.strftime("%d/%m %H:%M")
 
@@ -657,18 +731,22 @@ def get_intraday_chart(
             })
 
         if not records:
-            raise HTTPException(
-                status_code=404,
-                detail="Không có dữ liệu trong giờ giao dịch (9:00-14:45)"
-            )
+            raise HTTPException(status_code=404,
+                detail="Không có dữ liệu trong giờ giao dịch")
+
+        label_day_out = label_day if days == 1 else f"{days} ngày"
 
         return {
-            "symbol":    symbol,
-            "interval": "5m" if days == 1 else "15m",
-            "days":      days,
-            "data":      records,
-            "count":     len(records),
-            "updatedAt": dt.now().strftime("%H:%M:%S"),
+            "symbol":     symbol,
+            "interval":   interval,
+            "days":       days,
+            "labelDay":   label_day_out,
+            "isWeekend":  is_weekend,
+            "targetDate": fetch_end,
+            "validDates": sorted(valid_dates),
+            "data":       records,
+            "count":      len(records),
+            "updatedAt":  now.strftime("%H:%M:%S"),
         }
 
     except HTTPException:

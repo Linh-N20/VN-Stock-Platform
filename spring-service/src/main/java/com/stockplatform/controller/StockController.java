@@ -1,5 +1,6 @@
 package com.stockplatform.controller;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -14,26 +15,40 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import com.stockplatform.entity.StockData;
 import com.stockplatform.entity.StockSignal;
+import com.stockplatform.entity.WatchedStock;
+import com.stockplatform.repository.WatchedStockRepository;
 import com.stockplatform.service.PythonDataService;
 
 @Controller
 @RequestMapping("/stocks")
 public class StockController {
 
-    private final PythonDataService pythonDataService;
+    private final PythonDataService      pythonDataService;
+    private final WatchedStockRepository watchedStockRepo;
 
-    public StockController(PythonDataService pythonDataService) {
+    public StockController(PythonDataService pythonDataService,
+                           WatchedStockRepository watchedStockRepo) {
         this.pythonDataService = pythonDataService;
+        this.watchedStockRepo  = watchedStockRepo;
     }
 
     @GetMapping("/{symbol}")
     public String stockDetail(@PathVariable String symbol, Model model) {
         symbol = symbol.toUpperCase().trim();
 
-        List<StockData> history = pythonDataService.fetchAndSaveHistory(symbol, 90);
-        StockSignal signal = pythonDataService.fetchAndSaveSignal(symbol);
+        // ── Lưu vào watched stocks ────────────────────────────────────────────
+        String finalSymbol = symbol;
+        WatchedStock watched = watchedStockRepo.findBySymbol(symbol)
+            .orElse(new WatchedStock(finalSymbol));
+        watched.setLastViewedAt(LocalDateTime.now());
+        watched.setViewCount(watched.getViewCount() + 1);
+        watchedStockRepo.save(watched);
 
-        // Build JSON strings — dates, closes, volumes
+        // ── Fetch data ────────────────────────────────────────────────────────
+        List<StockData> history = pythonDataService.fetchAndSaveHistory(symbol, 90);
+        StockSignal signal      = pythonDataService.fetchAndSaveSignal(symbol);
+
+        // Build JSON strings
         StringBuilder datesJson   = new StringBuilder("[");
         StringBuilder closesJson  = new StringBuilder("[");
         StringBuilder volumesJson = new StringBuilder("[");
