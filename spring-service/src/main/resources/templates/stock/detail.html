@@ -393,7 +393,16 @@ window.addEventListener('load', function () {
     function loadDailyChart(days) {
         const n = Math.min(days, dailyDates.length);
         document.getElementById('chart-interval-badge').textContent = 'Daily';
-        buildCharts(dailyDates.slice(-n), dailyCloses.slice(-n), dailyVolumes.slice(-n), false);
+
+        // Đổi format date từ YYYY-MM-DD sang DD/MM/YYYY
+        const labels = dailyDates.slice(-n).map(d => {
+            const parts = d.split('-');
+            return parts.length === 3
+                ? `${parts[2]}/${parts[1]}/${parts[0]}`
+                : d;
+        });
+
+        buildCharts(labels, dailyCloses.slice(-n), dailyVolumes.slice(-n), false);
     }
 
     async function loadIntradayChart(days) {
