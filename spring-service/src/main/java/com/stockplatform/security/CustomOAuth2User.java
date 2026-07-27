@@ -6,50 +6,46 @@ import java.util.Map;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
+import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 
 import com.stockplatform.entity.AppUser;
 
 /**
- * Wrapper kết hợp OAuth2User (từ Google) + AppUser (từ DB của mình).
- * Spring Security dùng class này để biết user là ai và có quyền gì.
- *
- * Tại sao cần wrap?
- * - OAuth2User chỉ có thông tin từ Google (email, name, picture)
- * - AppUser có thêm role, id, createdAt từ DB của mình
- * - CustomOAuth2User kết hợp cả hai → dùng được ở mọi nơi
+ * Implement OidcUser (không phải OAuth2User) vì Google dùng OIDC.
  */
-public class CustomOAuth2User implements OAuth2User {
+public class CustomOAuth2User implements OidcUser {
 
-    private final OAuth2User  oauth2User;
-    private final AppUser     appUser;
+    private final OidcUser  oidcUser;
+    private final AppUser   appUser;
 
-    public CustomOAuth2User(OAuth2User oauth2User, AppUser appUser) {
-        this.oauth2User = oauth2User;
-        this.appUser    = appUser;
+    public CustomOAuth2User(OidcUser oidcUser, AppUser appUser) {
+        this.oidcUser = oidcUser;
+        this.appUser  = appUser;
     }
 
+    // ── OidcUser methods ──────────────────────────────────────────────────────
+    @Override public OidcIdToken  getIdToken()   { return oidcUser.getIdToken(); }
+    @Override public OidcUserInfo getUserInfo()  { return oidcUser.getUserInfo(); }
+    @Override public Map<String, Object> getClaims() { return oidcUser.getClaims(); }
+
+    // ── OAuth2User methods ────────────────────────────────────────────────────
     @Override
-    public Map<String, Object> getAttributes() {
-        return oauth2User.getAttributes();
-    }
+    public Map<String, Object> getAttributes() { return oidcUser.getAttributes(); }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // Chuyển role từ DB thành Spring Security authority
-        // ROLE_USER hoặc ROLE_ADMIN
         return List.of(new SimpleGrantedAuthority("ROLE_" + appUser.getRole().name()));
     }
 
     @Override
-    public String getName() {
-        return appUser.getEmail();
-    }
+    public String getName() { return appUser.getEmail(); }
 
-    // Tiện ích để lấy thông tin user ở controller/template
-    public AppUser  getAppUser()  { return appUser; }
-    public String   getEmail()    { return appUser.getEmail(); }
-    public String   getFullName() { return appUser.getName(); }
-    public String   getPicture()  { return appUser.getPicture(); }
-    public boolean  isAdmin()     { return appUser.getRole() == AppUser.Role.ADMIN; }
+    // ── Tiện ích ──────────────────────────────────────────────────────────────
+    public AppUser getAppUser()  { return appUser; }
+    public String  getEmail()    { return appUser.getEmail(); }
+    public String  getFullName() { return appUser.getName(); }
+    public String  getPicture()  { return appUser.getPicture(); }
+    public boolean isAdmin()     { return appUser.getRole() == AppUser.Role.ADMIN; }
 }

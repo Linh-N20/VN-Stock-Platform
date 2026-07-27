@@ -1,7 +1,5 @@
 package com.stockplatform.config;
 
-import com.stockplatform.security.OAuth2UserService;
-import com.stockplatform.security.RateLimitFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -12,16 +10,9 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.client.RestTemplate;
 
-/**
- * Cấu hình bảo mật trung tâm của ứng dụng.
- *
- * Các quyết định thiết kế:
- * 1. OAuth2 Only — không có username/password tự quản lý
- * 2. Public routes — trang chủ, học chứng khoán ai cũng xem được
- * 3. Protected routes — chỉ user đăng nhập mới refresh/xem portfolio
- * 4. Security headers — chặn XSS, clickjacking, MIME sniffing
- * 5. Rate limiting — chặn DDoS và brute force
- */
+import com.stockplatform.security.OAuth2UserService;
+import com.stockplatform.security.RateLimitFilter;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -46,37 +37,44 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // ── Rate limiting: chạy trước mọi filter khác ─────────────────
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
 
-            // ── Phân quyền truy cập ────────────────────────────────────────
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    "/",
-                    "/market",
-                    "/stocks/**",
-                    "/learn/**",
-                    "/search",
-                    "/login",
+                    "/", "/market", "/stocks/**", "/learn/**",
+                    "/search", "/login",
                     "/css/**", "/js/**", "/images/**",
-                    "/h2-console/**",
-                    "/error"
+                    "/h2-console/**", "/error",
+                    "/api/favorites/check/**"  // check không cần login
                 ).permitAll()
                 .requestMatchers("/profile", "/profile/**").authenticated()
+                .requestMatchers("/api/favorites/**").authenticated()
                 .anyRequest().permitAll()
             )
 
-            // ── OAuth2 Login (Google) ──────────────────────────────────────
-            .oauth2Login(oauth2 -> oauth2
-                .loginPage("/login")                     // trang login tự tạo (đẹp hơn default)
-                .userInfoEndpoint(ui -> ui
-                    .userService(oAuth2UserService)      // class xử lý sau khi Google xác thực
-                )
-                .defaultSuccessUrl("/", true)            // sau login → về trang chủ
-                .failureUrl("/login?error=true")         // login thất bại → báo lỗi
+            .exceptionHandling(ex -> ex
+                // API endpoints trả JSON 401 thay vì redirect về login page
+                .authenticationEntryPoint((request, response, authException) -> {
+                    String path = request.getRequestURI();
+                    if (path.startsWith("/api/")) {
+                        response.setStatus(401);
+                        response.setContentType("application/json;charset=UTF-8");
+                        response.getWriter().write("{\"error\":\"Chưa đăng nhập\",\"status\":401}");
+                    } else {
+                        response.sendRedirect("/login");
+                    }
+                })
             )
 
-            // ── Logout ────────────────────────────────────────────────────
+            .oauth2Login(oauth2 -> oauth2
+                .loginPage("/login")
+                .userInfoEndpoint(ui -> ui
+                    .oidcUserService(oAuth2UserService)
+                )
+                .defaultSuccessUrl("/", true)
+                .failureUrl("/login?error=true")
+            )
+
             .logout(logout -> logout
                 .logoutUrl("/logout")
                 .logoutSuccessUrl("/")
@@ -86,28 +84,16 @@ public class SecurityConfig {
                 .permitAll()
             )
 
-            // ── CSRF Protection ───────────────────────────────────────────
-            // Bật CSRF cho form POST (chặn Cross-Site Request Forgery)
-            // H2 console cần disable CSRF và frameOptions nên tạm thời disable
-            // TODO: bật lại khi bỏ H2 console (production)
             .csrf(csrf -> csrf
-                .ignoringRequestMatchers("/h2-console/**")
+                .ignoringRequestMatchers("/h2-console/**", "/api/**")
             )
 
-            // ── Security Headers ──────────────────────────────────────────
-            // Các header này chặn nhiều loại tấn công phổ biến
             .headers(headers -> headers
-                // Chặn clickjacking: không cho nhúng site trong iframe
-                .frameOptions(f -> f.sameOrigin())  // cho phép h2-console (same origin)
-                // Chặn MIME sniffing: browser không đoán content type
+                .frameOptions(f -> f.sameOrigin())
                 .contentTypeOptions(c -> {})
-                // Buộc HTTPS (chỉ bật khi production có SSL)
-                // .httpStrictTransportSecurity(hsts -> hsts.maxAgeInSeconds(31536000))
-                // Referrer policy: không leak URL khi click link ngoài
                 .referrerPolicy(r ->
                     r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
                 )
-                // Content Security Policy: chỉ load resource từ nguồn tin cậy
                 .contentSecurityPolicy(csp -> csp
                     .policyDirectives(
                         "default-src 'self'; " +
@@ -115,7 +101,7 @@ public class SecurityConfig {
                         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
                         "font-src 'self' https://cdn.jsdelivr.net data:; " +
                         "img-src 'self' data: https://lh3.googleusercontent.com https://cdn.jsdelivr.net; " +
-                        "connect-src 'self' http://localhost:8000; " +
+                        "connect-src 'self' http://localhost:8000 https://cdn.jsdelivr.net; " +
                         "frame-ancestors 'self'"
                     )
                 )

@@ -181,12 +181,25 @@
                         </span>
                     </td>
 
-                    <!-- Nút chi tiết -->
+                    <!-- Nút yêu thích và chi tiết -->
                     <td class="pe-4 py-3 text-end">
+
+                        <button type="button"
+                                class="btn btn-link fav-btn p-0 me-5"
+                                th:data-symbol="${sig.symbol}"
+                                onclick="toggleFavDashboard(this)"
+                                title="Yêu thích">
+
+                            <i class="bi bi-heart fav-icon"></i>
+
+                        </button>
+
                         <a th:href="@{/stocks/{s}(s=${sig.symbol})}"
                            class="btn btn-sm btn-outline-primary px-3">
-                            Chi tiết <i class="bi bi-arrow-right ms-1"></i>
+                           Chi tiết
+                            <i class="bi bi-arrow-right ms-1"></i>
                         </a>
+
                     </td>
                 </tr>
                 </tbody>

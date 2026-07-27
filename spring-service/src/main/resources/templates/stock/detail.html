@@ -31,7 +31,17 @@
 <!-- Header -->
 <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
-        <h1 class="h3 fw-bold mb-0" th:text="${symbol}"></h1>
+        <div class="d-flex align-items-center gap-3">
+            <h1 class="h3 fw-bold mb-0" th:text="${symbol}"></h1>
+            <!-- Nút yêu thích -->
+            <button id="fav-btn"
+                    class="btn btn-link p-0 border-0 text-muted"
+                    style="font-size:1.5rem; line-height:1"
+                    title="Yêu thích"
+                    onclick="toggleFavorite()">
+                <i class="bi bi-heart" id="fav-icon"></i>
+            </button>
+        </div>
         <a th:href="@{/}" class="text-muted small">
             <i class="bi bi-arrow-left me-1"></i>Về Dashboard
         </a>
@@ -586,6 +596,68 @@ window.addEventListener('load', function () {
         updateOrderBook();
     }, 300_000);
 });
+
+// ── Favorite toggle ────────────────────────────────────────────────────────────
+(function initFavorite() {
+    const btn  = document.getElementById('fav-btn');
+    const icon = document.getElementById('fav-icon');
+    if (!btn || !icon) return;
+
+    const SYMBOL = document.getElementById('chartData').getAttribute('data-symbol');
+
+    function setFavState(isFav) {
+        if (isFav) {
+            icon.className  = 'bi bi-heart-fill';
+            btn.style.color = '#dc3545';
+            btn.title       = 'Bỏ yêu thích';
+        } else {
+            icon.className  = 'bi bi-heart';
+            btn.style.color = '#6c757d';
+            btn.title       = 'Thêm vào yêu thích';
+        }
+    }
+
+    // Kiểm tra trạng thái khi load trang
+    fetch(`/api/favorites/check/${SYMBOL}`, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(data => setFavState(data.favorited))
+        .catch(() => {});
+
+    window.toggleFavorite = function () {
+        const csrfToken = document.querySelector('meta[name="_csrf"]')
+                            ?.getAttribute('content') || '';
+        fetch(`/api/favorites/toggle/${SYMBOL}`, {
+            method:      'POST',
+            credentials: 'same-origin',
+            headers:     { 'X-CSRF-TOKEN': csrfToken }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { showToast('Vui lòng đăng nhập'); return; }
+            setFavState(data.favorited);
+            showToast(data.favorited
+                ? `❤️ Đã thêm ${SYMBOL} vào yêu thích`
+                : `🤍 Đã xóa ${SYMBOL} khỏi yêu thích`);
+        })
+        .catch(() => showToast('Có lỗi xảy ra'));
+    };
+
+    function showToast(msg) {
+        let t = document.getElementById('fav-toast');
+        if (!t) {
+            t = document.createElement('div');
+            t.id = 'fav-toast';
+            t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;' +
+                'background:#1e293b;color:#f1f5f9;padding:10px 18px;border-radius:10px;' +
+                'font-size:.875rem;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;opacity:0';
+            document.body.appendChild(t);
+        }
+        t.textContent = msg;
+        t.style.opacity = '1';
+        setTimeout(() => t.style.opacity = '0', 2500);
+    }
+    window.showToast = showToast;
+})();
 </script>
 
 </th:block>
