@@ -71,44 +71,49 @@
         <div th:unless="${signals.empty}">
             <table class="table mb-0 align-middle w-100">
                 <colgroup>
-                    <col style="width:10%">   <!-- Mã CK -->
-                    <col style="width:12%">   <!-- Giá -->
-                    <col style="width:12%">   <!-- Tín hiệu -->
-                    <col style="width:12%">   <!-- RSI -->
-                    <col style="width:12%">   <!-- MACD -->
-                    <col style="width:10%">   <!-- MA20 -->
-                    <col style="width:16%">   <!-- Cập nhật -->
-                    <col style="width:16%">   <!-- Nút -->
+                    <col style="width:10%">  <!-- Mã CK -->
+                    <col style="width:10%">  <!-- Giá -->
+                    <col style="width:12%">  <!-- Tín hiệu -->
+                    <col style="width:14%">  <!-- RSI -->
+                    <col style="width:12%">  <!-- MACD -->
+                    <col style="width:10%">  <!-- MA20 -->
+                    <col style="width:12%">  <!-- Cập nhật -->
+                    <col style="width:10%">  <!-- Yêu thích -->
+                    <col style="width:10%">  <!-- Chi tiết -->
                 </colgroup>
                 <thead>
                     <tr class="border-bottom bg-light">
                         <th class="ps-4 py-3 text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             Mã CK
                         </th>
                         <th class="py-3 text-center text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             Giá
                         </th>
                         <th class="py-3 text-center text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             Tín hiệu
                         </th>
                         <th class="py-3 text-center text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             RSI
                         </th>
                         <th class="py-3 text-center text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             MACD
                         </th>
                         <th class="py-3 text-center text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             MA20
                         </th>
                         <th class="py-3 text-center text-uppercase fw-semibold"
-                            style="font-size:.72rem;letter-spacing:.6px;color:#6c757d">
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
                             Cập nhật
+                        </th>
+                        <th class="ps-4 py-3 text-uppercase fw-semibold"
+                            style="font-size:.84rem;letter-spacing:.6px;color:#6c757d">
+                            Yêu thích
                         </th>
                         <th class="pe-4 py-3"></th>
                     </tr>
@@ -181,25 +186,25 @@
                         </span>
                     </td>
 
-                    <!-- Nút yêu thích và chi tiết -->
-                    <td class="pe-4 py-3 text-end">
-
+                    <!-- Nút yêu thích -->
+                    <td class="py-3 text-center">
                         <button type="button"
-                                class="btn btn-link fav-btn p-0 me-5"
+                                class="btn btn-link fav-btn p-0 me-2"
                                 th:data-symbol="${sig.symbol}"
-                                onclick="toggleFavDashboard(this)"
+                                onclick="toggleFavorite(this)"
                                 title="Yêu thích">
 
                             <i class="bi bi-heart fav-icon"></i>
-
                         </button>
+                    </td>
 
+                    <!-- Nút Chi tiết -->
+                     <td class="text-center">
                         <a th:href="@{/stocks/{s}(s=${sig.symbol})}"
                            class="btn btn-sm btn-outline-primary px-3">
                            Chi tiết
                             <i class="bi bi-arrow-right ms-1"></i>
                         </a>
-
                     </td>
                 </tr>
                 </tbody>
