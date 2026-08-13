@@ -754,3 +754,96 @@ def get_intraday_chart(
     except Exception as e:
         logger.error(f"Intraday chart error {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/stocks/profile/{symbol}")
+def get_company_profile(symbol: str):
+    """
+    Company profile đầy đủ: tên, ngành, market cap, 52W high/low,
+    cổ tức, mô tả, cổ đông lớn.
+    """
+    symbol = symbol.upper().strip()
+    try:
+        from datetime import datetime as dt
+
+        stock    = get_stock_client().stock(symbol=symbol, source="VCI")
+        overview = stock.company.overview()
+
+        if overview is None or overview.empty:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy {symbol}")
+
+        row = overview.iloc[0]
+
+        def sv(key, default=None):
+            val = row.get(key, default)
+            if val is None or (isinstance(val, float) and __import__('math').isnan(val)):
+                return default
+            return val
+
+        # Market cap — VCI trả về đơn vị đồng, đổi sang tỷ đồng
+        market_cap_raw = sv("market_cap")
+        market_cap_billion = round(market_cap_raw / 1_000_000_000, 1) if market_cap_raw else None
+
+        # Cổ tức VND/cổ phiếu
+        dividend = sv("dividend_per_share_tsr")
+
+        # Lấy cổ đông lớn
+        shareholders = []
+        try:
+            df_sh = stock.company.shareholders()
+            if df_sh is not None and not df_sh.empty:
+                for _, sh in df_sh.head(5).iterrows():
+                    name  = sh.get("share_holder", "")
+                    pct   = sh.get("share_own_percent", 0)
+                    if name:
+                        shareholders.append({
+                            "name":    str(name),
+                            "percent": round(float(pct) * 100, 2) if pct else 0
+                        })
+        except Exception:
+            pass
+
+        # Ngày niêm yết
+        listing_date = sv("listing_date", "")
+        if listing_date and "T" in str(listing_date):
+            listing_date = str(listing_date).split("T")[0]
+
+        return {
+            "symbol":          symbol,
+            "name":            sv("organ_name", symbol),
+            "shortName":       sv("organ_short_name", symbol),
+            "sector":          sv("sector", ""),
+            "exchange":        "HoSE",
+
+            # Thị giá & định giá
+            "currentPrice":    safe_float(sv("current_price")),
+            "marketCap":       market_cap_billion,      # tỷ VND
+            "issueShares":     safe_float(sv("issue_share")),
+            "targetPrice":     safe_float(sv("target_price")),
+            "analystRating":   sv("rating", ""),
+
+            # 52 tuần
+            "high52w":         safe_float(sv("highest_price1_year")),
+            "low52w":          safe_float(sv("lowest_price1_year")),
+
+            # Cổ tức
+            "dividendPerShare": safe_float(dividend),
+
+            # Sở hữu
+            "foreignPercent":  round(float(sv("foreigner_percentage", 0)) * 100, 2),
+            "statePercent":    round(float(sv("state_percentage", 0)) * 100, 2),
+            "freeFloat":       round(float(sv("free_float_percentage", 0)) * 100, 2),
+
+            # Khác
+            "listingDate":     listing_date,
+            "companyProfile":  sv("company_profile", ""),
+            "shareholders":    shareholders,
+
+            "updatedAt":       dt.now().strftime("%H:%M:%S"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Company profile error {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

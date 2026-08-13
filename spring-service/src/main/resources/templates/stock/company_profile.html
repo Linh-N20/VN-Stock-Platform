@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<th:block th:fragment="profile(symbol)">
+
+<style>
+/* Tooltip giải thích chỉ số */
+.metric-tooltip {
+    position: relative;
+    cursor: help;
+}
+.metric-tooltip .tooltip-box {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    background: #1e293b;
+    color: #f1f5f9;
+    font-size: .75rem;
+    line-height: 1.5;
+    padding: 10px 12px;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.25);
+    z-index: 999;
+    pointer-events: none;
+}
+.metric-tooltip .tooltip-box::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 6px solid transparent;
+    border-top-color: #1e293b;
+}
+.metric-tooltip:hover .tooltip-box {
+    display: block;
+    animation: tooltipFadeIn .15s ease;
+}
+@keyframes tooltipFadeIn {
+    from { opacity:0; transform: translateX(-50%) translateY(4px); }
+    to   { opacity:1; transform: translateX(-50%) translateY(0); }
+}
+</style>
+
+<div class="card border-0 shadow-sm mb-4" id="company-profile-card">
+    <div class="card-header bg-white d-flex align-items-center justify-content-between py-2"
+         role="button" onclick="toggleProfileCard()"
+         style="cursor: pointer;">
+        <span class="fw-semibold small">
+            <i class="bi bi-building me-2"></i> Thông tin công ty
+        </span>
+        <i class="bi bi-chevron-down" id="profile-toggle-icon"></i>
+    </div>
+
+    <div id="profile-body" class="card-body p-0" style="display:none">
+        <div class="row g-0">
+
+            <!-- LEFT: Logo + tên + mô tả + cổ đông -->
+            <div class="col-lg-8 p-4 border-end">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <!-- Logo -->
+                    <div class="rounded-2 bg-light border d-flex align-items-center justify-content-center flex-shrink-0"
+                         style="width:56px;height:56px;overflow:hidden" id="cp-logo-wrap">
+                        <span class="fw-bold text-primary fs-5" id="cp-logo-text"></span>
+                    </div>
+                    <div>
+                        <h5 class="fw-bold mb-1" id="cp-name">—</h5>
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25"
+                                  id="cp-exchange">HoSE</span>
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary border"
+                                  id="cp-sector">—</span>
+                            <span class="badge" id="cp-rating" style="display:none"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mô tả công ty -->
+                <div id="cp-desc-wrap" style="display:none">
+                    <p class="small text-muted mb-1" id="cp-desc-short"
+                       style="overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical"></p>
+                    <p class="small text-muted mb-1" id="cp-desc-full" style="display:none"></p>
+                    <button class="btn btn-link btn-sm p-0 text-primary small" id="cp-desc-btn"
+                            onclick="toggleDesc()">
+                        Xem thêm <i class="bi bi-chevron-down"></i>
+                    </button>
+                </div>
+
+                <!-- Cổ đông lớn -->
+                <div class="mt-3" id="cp-shareholders-wrap" style="display:none">
+                    <p class="small fw-semibold text-muted mb-2">
+                        <i class="bi bi-people me-1"></i>Cổ đông lớn
+                    </p>
+                    <div id="cp-shareholders"></div>
+                </div>
+            </div>
+
+            <!-- RIGHT: Key metrics với tooltip -->
+            <div class="col-lg-4 p-4">
+                <p class="small fw-semibold text-muted mb-3">
+                    <i class="bi bi-bar-chart-line me-1"></i>Chỉ số quan trọng
+                </p>
+                <div class="row g-2">
+
+                    <!-- Vốn hóa -->
+                    <div class="col-6">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">VỐN HÓA</div>
+                            <div class="fw-bold small" id="cp-mktcap">—</div>
+                            <div class="tooltip-box">
+                                <strong>Vốn hóa thị trường</strong><br>
+                                Tổng giá trị thị trường của toàn bộ cổ phiếu đang lưu hành. Vốn hóa càng lớn thì công ty càng ổn định, ít rủi ro.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Giá mục tiêu -->
+                    <div class="col-6">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">GIÁ MỤC TIÊU</div>
+                            <div class="fw-bold small text-success" id="cp-target">—</div>
+                            <div class="tooltip-box">
+                                <strong>Giá mục tiêu</strong><br>
+                                Mức giá mà chuyên gia phân tích kỳ vọng cổ phiếu có thể đạt được trong 12 tháng tới.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 52W cao -->
+                    <div class="col-6">
+                        <div class="p-2 bg-danger bg-opacity-10 rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">52W CAO NHẤT</div>
+                            <div class="fw-bold small text-danger" id="cp-high52">—</div>
+                            <div class="tooltip-box">
+                                <strong>Giá cao nhất 52 tuần</strong><br>
+                                Mức giá cao nhất của cổ phiếu trong 52 tuần gần nhất.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 52W thấp -->
+                    <div class="col-6">
+                        <div class="p-2 bg-success bg-opacity-10 rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">52W THẤP NHẤT</div>
+                            <div class="fw-bold small text-success" id="cp-low52">—</div>
+                            <div class="tooltip-box">
+                                <strong>Giá thấp nhất 52 tuần</strong><br>
+                                Mức giá thấp nhất của cổ phiếu trong 52 tuần gần nhất.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cổ tức -->
+                    <div class="col-6">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">CỔ TỨC/CP</div>
+                            <div class="fw-bold small" id="cp-dividend">—</div>
+                            <div class="tooltip-box">
+                                <strong>Cổ tức mỗi cổ phiếu</strong><br>
+                                Khoản tiền công ty trả cho cổ đông với mỗi cổ phiếu mỗi năm. Cổ tức cao phù hợp cho đầu tư dài hạn.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Free float -->
+                    <div class="col-6">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">FREE FLOAT</div>
+                            <div class="fw-bold small" id="cp-float">—</div>
+                            <div class="tooltip-box">
+                                <strong>Tỷ lệ cổ phiếu tự do</strong><br>
+                                Phần cổ phiếu có thể giao dịch tự do trên thị trường. Free float càng cao thì thanh khoản càng tốt.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Nước ngoài -->
+                    <div class="col-6">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">SH NƯỚC NGOÀI</div>
+                            <div class="fw-bold small" id="cp-foreign">—</div>
+                            <div class="tooltip-box">
+                                <strong>Sở hữu nước ngoài</strong><br>
+                                Tỷ lệ cổ phiếu do nhà đầu tư nước ngoài nắm giữ. Tỷ lệ cao cho thấy cổ phiếu được quốc tế tin tưởng.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Nhà nước -->
+                    <div class="col-6">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">SH NHÀ NƯỚC</div>
+                            <div class="fw-bold small" id="cp-state">—</div>
+                            <div class="tooltip-box">
+                                <strong>Sở hữu nhà nước</strong><br>
+                                Tỷ lệ cổ phiếu do Nhà nước năm giữ.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ngày niêm yết -->
+                    <div class="col-12">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="text-muted" style="font-size:.68rem;letter-spacing:.4px">NGÀY NIÊM YẾT</div>
+                            <div class="fw-bold small" id="cp-listing">—</div>
+                            <div class="tooltip-box">
+                                <strong>Ngày niêm yết</strong><br>
+                                Ngày cổ phiếu được giao dịch lần đầu trên sàn.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 52W bar -->
+                    <div class="col-12 mt-1">
+                        <div class="p-2 bg-light rounded-3 metric-tooltip">
+                            <div class="d-flex justify-content-between mb-1">
+                                <small class="text-muted" style="font-size:.68rem">VỊ TRÍ GIÁ 52 TUẦN</small>
+                                <small class="text-muted fw-semibold" id="cp-cur-label">—</small>
+                            </div>
+                            <div style="height:6px;background:#e5e7eb;border-radius:3px;position:relative">
+                                <div id="cp-52w-bar"
+                                     style="height:100%;background:linear-gradient(90deg,#22c55e,#ef4444);
+                                            border-radius:3px;width:0%;transition:width .6s ease"></div>
+                                <div id="cp-52w-dot"
+                                     style="position:absolute;top:-3px;width:12px;height:12px;
+                                            background:#4f46e5;border:2px solid #fff;border-radius:50%;
+                                            box-shadow:0 1px 4px rgba(0,0,0,.2);left:0%;
+                                            transform:translateX(-50%);transition:left .6s ease"></div>
+                            </div>
+                            <div class="d-flex justify-content-between mt-1">
+                                <small class="text-success fw-semibold" id="cp-low-label">—</small>
+                                <small class="text-danger fw-semibold" id="cp-high-label">—</small>
+                            </div>
+                            <div class="tooltip-box">
+                                <strong>Vị trí giá trong 52 tuần</strong><br>
+                                Chấm tím cho thấy giá hiện tại đang ở đâu giữa đáy và đỉnh 1 năm.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script th:inline="javascript">
+(function loadCompanyProfile() {
+    const SYMBOL = /*[[${symbol}]]*/ '';
+    if (!SYMBOL) return;
+
+    fetch(`/api/company/profile/${SYMBOL}`)
+        .then(r => r.json())
+        .then(d => {
+            if (d.detail) return;
+
+            // Logo — chữ cái đầu làm fallback
+            document.getElementById('cp-logo-text').textContent = SYMBOL.slice(0, 2);
+
+            // Tên & badges
+            document.getElementById('cp-name').textContent    = d.name || SYMBOL;
+            document.getElementById('cp-exchange').textContent = d.exchange || 'HoSE';
+            document.getElementById('cp-sector').textContent  = d.sector || '—';
+
+            if (d.analystRating) {
+                const rEl = document.getElementById('cp-rating');
+                rEl.textContent = '★ ' + d.analystRating;
+                rEl.style.display = 'inline';
+                rEl.className = 'badge ' + (
+                    d.analystRating === 'BUY'  ? 'bg-success' :
+                    d.analystRating === 'SELL' ? 'bg-danger'  : 'bg-warning text-dark'
+                );
+            }
+
+            // Mô tả
+            if (d.companyProfile) {
+                document.getElementById('cp-desc-short').textContent = d.companyProfile;
+                document.getElementById('cp-desc-full').textContent  = d.companyProfile;
+                document.getElementById('cp-desc-wrap').style.display = 'block';
+            }
+
+            // Metrics
+            const fmt    = n  => n != null ? n.toLocaleString('vi-VN') : '—';
+            const fmtPct = n  => n != null ? n.toFixed(1) + '%' : '—';
+            const fmtVnd = n  => n != null ? fmt(n) + ' ₫' : '—';
+
+            document.getElementById('cp-mktcap').textContent =
+                d.marketCap ? d.marketCap.toLocaleString('vi-VN') + ' tỷ ₫' : '—';
+            document.getElementById('cp-target').textContent  = fmtVnd(d.targetPrice);
+            document.getElementById('cp-high52').textContent  = fmtVnd(d.high52w);
+            document.getElementById('cp-low52').textContent   = fmtVnd(d.low52w);
+            document.getElementById('cp-dividend').textContent = fmtVnd(d.dividendPerShare);
+            document.getElementById('cp-float').textContent   = fmtPct(d.freeFloat);
+            document.getElementById('cp-foreign').textContent = fmtPct(d.foreignPercent);
+            document.getElementById('cp-state').textContent   = fmtPct(d.statePercent);
+
+            if (d.listingDate) {
+                const p = d.listingDate.split('-');
+                document.getElementById('cp-listing').textContent =
+                    p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : d.listingDate;
+            }
+
+            // 52W price range bar
+            if (d.high52w && d.low52w && d.currentPrice) {
+                const pct = Math.max(0, Math.min(100,
+                    ((d.currentPrice - d.low52w) / (d.high52w - d.low52w)) * 100
+                ));
+                document.getElementById('cp-52w-bar').style.width  = pct + '%';
+                document.getElementById('cp-52w-dot').style.left   = pct + '%';
+                document.getElementById('cp-cur-label').textContent = fmt(d.currentPrice) + ' ₫';
+                document.getElementById('cp-low-label').textContent = fmt(d.low52w);
+                document.getElementById('cp-high-label').textContent = fmt(d.high52w);
+            }
+
+            // Cổ đông lớn
+            if (d.shareholders && d.shareholders.length > 0) {
+                const shEl = document.getElementById('cp-shareholders');
+                shEl.innerHTML = d.shareholders.map(s => `
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <div class="text-muted small text-truncate" style="flex:1;max-width:200px"
+                             title="${s.name}">${s.name}</div>
+                        <div style="width:70px;height:5px;background:#f0f0f0;border-radius:3px;flex-shrink:0">
+                            <div style="width:${Math.min(s.percent * 5, 100)}%;height:100%;
+                                        background:#4f46e5;border-radius:3px"></div>
+                        </div>
+                        <div class="fw-semibold small text-nowrap" style="width:40px;text-align:right">
+                            ${s.percent}%
+                        </div>
+                    </div>
+                `).join('');
+                document.getElementById('cp-shareholders-wrap').style.display = 'block';
+            }
+
+            // Hiện card
+            document.getElementById('company-profile-card').style.display = 'block';
+            document.getElementById('profile-body').style.display = 'none';
+            document.getElementById('profile-toggle-icon').className = 'bi bi-chevron-down';
+        })
+        .catch(() => {});
+})();
+
+let _descExpanded = false;
+function toggleDesc() {
+    _descExpanded = !_descExpanded;
+    document.getElementById('cp-desc-short').style.display = _descExpanded ? 'none'  : '-webkit-box';
+    document.getElementById('cp-desc-full').style.display  = _descExpanded ? 'block' : 'none';
+    const btn = document.getElementById('cp-desc-btn');
+    btn.innerHTML = _descExpanded
+        ? 'Thu gọn <i class="bi bi-chevron-up"></i>'
+        : 'Xem thêm <i class="bi bi-chevron-down"></i>';
+}
+
+let _profileCollapsed = true;
+function toggleProfileCard() {
+    _profileCollapsed = !_profileCollapsed;
+    const body = document.getElementById('profile-body');
+    const icon = document.getElementById('profile-toggle-icon');
+
+    if (_profileCollapsed) {
+        body.style.display = 'none';
+        icon.className = 'bi bi-chevron-down';
+    } else {
+        body.style.display = 'block';
+        icon.className = 'bi bi-chevron-up';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (el) {
+        new bootstrap.Tooltip(el, {
+            delay: {show: 1000, hide: 100}
+        });
+    });
+});
+</script>
+
+</th:block>
+</body>
+</html>
