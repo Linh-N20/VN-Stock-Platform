@@ -1,49 +1,49 @@
 package com.stockplatform.service;
 
-import com.stockplatform.entity.StockData;
-import com.stockplatform.entity.StockSignal;
-import com.stockplatform.repository.StockDataRepository;
-import com.stockplatform.repository.StockSignalRepository;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestTemplate;
 
-import java.time.LocalDate;
-import java.util.*;
+import com.stockplatform.entity.StockData;
+import com.stockplatform.entity.StockSignal;
+import com.stockplatform.entity.WatchedStock;
+import com.stockplatform.repository.StockDataRepository;
+import com.stockplatform.repository.StockSignalRepository;
+import com.stockplatform.repository.WatchedStockRepository;
 
-/**
- * Gọi Python FastAPI service để lấy dữ liệu và lưu vào database.
- *
- * Đây là "cầu nối" giữa Java và Python:
- * Spring Boot → HTTP → FastAPI → VNStock → dữ liệu thô
- *                 ↓
- *           lưu vào H2/MySQL
- */
 @Service
 public class PythonDataService {
 
     private static final Logger log = LoggerFactory.getLogger(PythonDataService.class);
 
-    private final RestTemplate          restTemplate;
-    private final StockDataRepository   stockDataRepo;
-    private final StockSignalRepository signalRepo;
+    private final RestTemplate           restTemplate;
+    private final StockDataRepository    stockDataRepo;
+    private final StockSignalRepository  signalRepo;
+    private final WatchedStockRepository watchedStockRepo;
 
     @Value("${app.python-service.url}")
     private String pythonServiceUrl;
 
     public PythonDataService(StockDataRepository stockDataRepo,
                              StockSignalRepository signalRepo,
+                             WatchedStockRepository watchedStockRepo,
                              RestTemplate restTemplate) {
-        this.restTemplate  = restTemplate;
-        this.stockDataRepo = stockDataRepo;
-        this.signalRepo    = signalRepo;
+        this.restTemplate     = restTemplate;
+        this.stockDataRepo    = stockDataRepo;
+        this.signalRepo       = signalRepo;
+        this.watchedStockRepo = watchedStockRepo;
     }
 
-    /** Kiểm tra Python service có đang chạy không */
     public boolean isPythonServiceUp() {
         try {
             restTemplate.getForObject(pythonServiceUrl + "/health", Map.class);
@@ -53,10 +53,6 @@ public class PythonDataService {
         }
     }
 
-    /**
-     * Lấy quote hiện tại từ Python service.
-     * Trả về Map thô — controller/template xử lý hiển thị.
-     */
     public Map<String, Object> getQuote(String symbol) {
         try {
             String url = pythonServiceUrl + "/stocks/quote/" + symbol.toUpperCase();
@@ -70,9 +66,6 @@ public class PythonDataService {
         }
     }
 
-    /**
-     * Lấy lịch sử giá và lưu vào DB nếu chưa có.
-     */
     @Transactional
     public List<StockData> fetchAndSaveHistory(String symbol, int days) {
         symbol = symbol.toUpperCase();
@@ -86,24 +79,23 @@ public class PythonDataService {
                 return stockDataRepo.findBySymbolOrderByDateAsc(symbol);
             }
 
-            List<Map<String, Object>> dataList = (List<Map<String, Object>>) response.get("data");
+            List<Map<String, Object>> dataList =
+                (List<Map<String, Object>>) response.get("data");
             int saved = 0;
 
             for (Map<String, Object> row : dataList) {
                 String dateStr = (String) row.get("date");
                 if (dateStr == null) continue;
 
-                // Chỉ lấy phần ngày nếu có timestamp
-                LocalDate date = LocalDate.parse(dateStr.length() > 10 ? dateStr.substring(0, 10) : dateStr);
-
+                LocalDate date = LocalDate.parse(
+                    dateStr.length() > 10 ? dateStr.substring(0, 10) : dateStr
+                );
                 if (stockDataRepo.existsBySymbolAndDate(symbol, date)) continue;
 
                 StockData sd = new StockData(
                     symbol, date,
-                    toDouble(row.get("open")),
-                    toDouble(row.get("high")),
-                    toDouble(row.get("low")),
-                    toDouble(row.get("close")),
+                    toDouble(row.get("open")), toDouble(row.get("high")),
+                    toDouble(row.get("low")),  toDouble(row.get("close")),
                     toDouble(row.get("volume"))
                 );
                 stockDataRepo.save(sd);
@@ -122,9 +114,6 @@ public class PythonDataService {
         );
     }
 
-    /**
-     * Lấy tín hiệu phân tích kỹ thuật từ Python và lưu vào DB.
-     */
     @Transactional
     public StockSignal fetchAndSaveSignal(String symbol) {
         symbol = symbol.toUpperCase();
@@ -138,11 +127,22 @@ public class PythonDataService {
 
             Map<String, Object> indicators =
                 (Map<String, Object>) response.getOrDefault("indicators", Map.of());
-            List<String> reasons = (List<String>) response.getOrDefault("reasons", List.of());
+
+            // ── Fix: reasons có thể là String hoặc List ───────────────────
+            String reasonsStr = "";
+            Object reasonsRaw = response.get("reasons");
+            if (reasonsRaw instanceof List<?> list) {
+                reasonsStr = String.join("|", list.stream()
+                    .map(Object::toString).toList());
+            } else if (reasonsRaw instanceof String s) {
+                reasonsStr = s;
+            }
 
             StockSignal signal = new StockSignal();
             signal.setSymbol(symbol);
-            signal.setSignal((String) response.getOrDefault("signal", "HOLD"));
+            // ── Fix: signal label mới TĂNG/GIẢM/GIỮ NGUYÊN ──────────────
+            String rawSignal = (String) response.getOrDefault("signal", "GIỮ NGUYÊN");
+            signal.setSignal(rawSignal);
             signal.setScore(toInt(response.get("score")));
             signal.setCurrentPrice(toDouble(response.get("currentPrice")));
             signal.setRsi(toDouble(indicators.get("rsi")));
@@ -152,7 +152,7 @@ public class PythonDataService {
             signal.setMa50(toDouble(indicators.get("ma50")));
             signal.setBbUpper(toDouble(indicators.get("bbUpper")));
             signal.setBbLower(toDouble(indicators.get("bbLower")));
-            signal.setReasons(String.join("|", reasons));
+            signal.setReasons(reasonsStr);
 
             return signalRepo.save(signal);
 
@@ -165,17 +165,31 @@ public class PythonDataService {
         }
     }
 
-    /** Lấy tín hiệu mới nhất đã lưu trong DB */
-    public StockSignal getLatestSignal(String symbol) {
-        return signalRepo.findTopBySymbolOrderByCalculatedAtDesc(symbol.toUpperCase())
-                .orElse(null);
+    /**
+     * Lưu cổ phiếu vào lịch sử xem — gọi khi user vào trang detail.
+     * Nếu đã có → cập nhật lastViewedAt và tăng viewCount.
+     */
+    @Transactional
+    public void recordWatchedStock(String symbol) {
+        symbol = symbol.toUpperCase().trim();
+        String finalSymbol = symbol;
+        WatchedStock watched = watchedStockRepo.findBySymbol(symbol)
+            .orElse(new WatchedStock(finalSymbol));
+        watched.setLastViewedAt(LocalDateTime.now());
+        watched.setViewCount(watched.getViewCount() + 1);
+        watchedStockRepo.save(watched);
+        log.debug("Recorded watched stock: {}", symbol);
     }
 
-    /** Lấy watchlist quotes */
+    public StockSignal getLatestSignal(String symbol) {
+        return signalRepo.findTopBySymbolOrderByCalculatedAtDesc(symbol.toUpperCase())
+            .orElse(null);
+    }
+
     public List<Map<String, Object>> getWatchlist(List<String> symbols) {
         try {
-            String symbolStr = String.join(",", symbols);
-            String url = pythonServiceUrl + "/stocks/watchlist?symbols=" + symbolStr;
+            String url = pythonServiceUrl + "/stocks/watchlist?symbols=" +
+                String.join(",", symbols);
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
             if (response != null && response.containsKey("watchlist")) {
                 return (List<Map<String, Object>>) response.get("watchlist");
@@ -186,7 +200,6 @@ public class PythonDataService {
         return List.of();
     }
 
-    /** Search */
     public List<Map<String, Object>> search(String query) {
         try {
             String url = pythonServiceUrl + "/stocks/search?q=" + query;
@@ -200,7 +213,7 @@ public class PythonDataService {
         return List.of();
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private Double toDouble(Object val) {
         if (val == null) return null;
@@ -214,11 +227,10 @@ public class PythonDataService {
         catch (Exception e) { return 0; }
     }
 
-    /** Trả về data rỗng khi Python service không chạy */
     private Map<String, Object> fallbackQuote(String symbol) {
         Map<String, Object> fallback = new HashMap<>();
         fallback.put("symbol", symbol);
-        fallback.put("error", "Python service chưa chạy. Chạy: uvicorn main:app --port 8000");
+        fallback.put("error", "Python service chưa chạy");
         fallback.put("currentPrice", null);
         return fallback;
     }

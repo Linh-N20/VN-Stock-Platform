@@ -279,6 +279,9 @@ cd python-service
 
 pip install -r requirements.txt  # Only for first run
 
+# visit https://vnstocks.com for YOUR_API_KEY (free)
+python -c "from vnstock.core.utils.auth import change_api_key; change_api_key('YOUR_API_KEY')" # Only for first run
+
 uvicorn main:app --reload
 ```
 
@@ -343,7 +346,7 @@ Final decision:
 
 ---
 
-# 📌 Roadmap
+# Roadmap
 
 - [x] Dashboard
 - [x] Technical Indicators

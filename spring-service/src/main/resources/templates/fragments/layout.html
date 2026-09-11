@@ -107,7 +107,7 @@
             <ul class="navbar-nav align-items-center gap-1">
                 <li class="nav-item">
                     <a class="nav-link" th:href="@{/}">
-                        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+                        <i class="bi bi-speedometer2 me-1"></i>Trang chủ
                     </a>
                 </li>
                 <li class="nav-item">
@@ -268,33 +268,62 @@
     }
 
     function renderDropdown(results, q) {
-        if (results.length === 0) {
-            dropdown.innerHTML = `<div class="autocomplete-empty">
-                <i class="bi bi-search me-1"></i>Không tìm thấy "<strong>${q}</strong>"
-            </div>`;
-            showDropdown();
-            return;
-        }
-
-        dropdown.innerHTML = results.map((s, i) => `
-            <a class="autocomplete-item" data-index="${i}" href="/stocks/${s.symbol}">
-                <span class="autocomplete-symbol">${highlight(s.symbol, q)}</span>
-                <span class="autocomplete-name">${highlight(s.name || '', q)}</span>
-                <span class="autocomplete-badge">${s.exchange || 'HoSE'}</span>
-            </a>
-        `).join('');
-
-        // Click vào item
-        dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
-            item.addEventListener('mousedown', function (e) {
-                e.preventDefault();
-                const idx = parseInt(this.dataset.index);
-                selectItem(currentItems[idx]);
-            });
-        });
-
+    if (results.length === 0) {
+        dropdown.innerHTML = `<div class="autocomplete-empty">
+            <i class="bi bi-search me-1"></i>Không tìm thấy "<strong>${q}</strong>"
+        </div>`;
         showDropdown();
+        return;
     }
+
+    // Render trước với giá loading
+    dropdown.innerHTML = results.map((s, i) => `
+        <a class="autocomplete-item" data-index="${i}" href="/stocks/${s.symbol}">
+            <span class="autocomplete-symbol">${highlight(s.symbol, q)}</span>
+            <span class="autocomplete-name">${highlight(s.name || '', q)}</span>
+            <span class="autocomplete-badge" id="ac-price-${s.symbol}">
+                <span class="text-muted" style="font-size:.7rem">...</span>
+            </span>
+        </a>
+    `).join('');
+
+    // Click vào item
+    dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
+        item.addEventListener('mousedown', function (e) {
+            e.preventDefault();
+            const idx = parseInt(this.dataset.index);
+            selectItem(currentItems[idx]);
+        });
+    });
+
+    showDropdown();
+
+    // Fetch giá realtime cho từng symbol
+    results.forEach(s => {
+        fetch(`http://localhost:8000/stocks/intraday/${s.symbol}`)
+            .then(r => r.json())
+            .then(d => {
+                const el = document.getElementById(`ac-price-${s.symbol}`);
+                if (!el || d.detail) return;
+
+                const price  = d.currentPrice;
+                const chg    = d.changePct;
+                if (price == null) return;
+
+                const color  = chg > 0 ? '#16a34a' : chg < 0 ? '#dc2626' : '#ca8a04';
+                const sign   = chg > 0 ? '+' : '';
+                const chgStr = chg != null ? ` (${sign}${chg.toFixed(2)}%)` : '';
+
+                el.innerHTML = `<span style="color:${color};font-size:.75rem;font-weight:600">
+                    ${price.toLocaleString('vi-VN')}${chgStr}
+                </span>`;
+            })
+            .catch(() => {
+                const el = document.getElementById(`ac-price-${s.symbol}`);
+                if (el) el.innerHTML = `<span class="text-muted" style="font-size:.7rem">HoSE</span>`;
+            });
+    });
+}
 
     function highlight(text, q) {
         if (!q) return text;

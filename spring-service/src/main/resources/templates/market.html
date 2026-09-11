@@ -30,7 +30,7 @@
         <div class="card border-0 shadow-sm border-start border-success border-3">
             <div class="card-body py-3 d-flex justify-content-between align-items-center">
                 <div>
-                    <p class="text-muted small mb-1">Tín hiệu MUA</p>
+                    <p class="text-muted small mb-1">Tín hiệu TĂNG</p>
                     <h3 class="fw-bold text-success mb-0" th:text="${buyCount}">0</h3>
                 </div>
                 <i class="bi bi-arrow-up-circle-fill text-success fs-2 opacity-50"></i>
@@ -41,7 +41,7 @@
         <div class="card border-0 shadow-sm border-start border-warning border-3">
             <div class="card-body py-3 d-flex justify-content-between align-items-center">
                 <div>
-                    <p class="text-muted small mb-1">Tín hiệu GIỮ</p>
+                    <p class="text-muted small mb-1">Tín hiệu GIỮ NGUYÊN</p>
                     <h3 class="fw-bold text-warning mb-0" th:text="${holdCount}">0</h3>
                 </div>
                 <i class="bi bi-dash-circle-fill text-warning fs-2 opacity-50"></i>
@@ -52,7 +52,7 @@
         <div class="card border-0 shadow-sm border-start border-danger border-3">
             <div class="card-body py-3 d-flex justify-content-between align-items-center">
                 <div>
-                    <p class="text-muted small mb-1">Tín hiệu BÁN</p>
+                    <p class="text-muted small mb-1">Tín hiệu GIẢM</p>
                     <h3 class="fw-bold text-danger mb-0" th:text="${sellCount}">0</h3>
                 </div>
                 <i class="bi bi-arrow-down-circle-fill text-danger fs-2 opacity-50"></i>
@@ -76,12 +76,12 @@
                 </select>
             </div>
             <div class="col-md-2">
-                <label class="form-label small fw-semibold">Tín hiệu</label>
+                <label class="form-label small fw-semibold">Dự đoán</label>
                 <select name="signal" class="form-select form-select-sm">
                     <option value="">Tất cả</option>
-                    <option value="BUY"  th:selected="${'BUY'  == currentSignal}">🟢 BUY</option>
-                    <option value="HOLD" th:selected="${'HOLD' == currentSignal}">🟡 HOLD</option>
-                    <option value="SELL" th:selected="${'SELL' == currentSignal}">🔴 SELL</option>
+                    <option value="TĂNG"  th:selected="${'TĂNG'  == currentSignal}">TĂNG</option>
+                    <option value="GIỮ NGUYÊN" th:selected="${'GIỮ NGUYÊN' == currentSignal}">GIỮ NGUYÊN</option>
+                    <option value="GIẢM" th:selected="${'GIẢM' == currentSignal}">GIẢM</option>
                 </select>
             </div>
             <div class="col-md-2">
@@ -143,14 +143,14 @@
                 
                 <!-- Header -->
                 <tr>
-                    <th style="width:100px;">Mã CK</th>
+                    <th class="ps-3" style="width:100px;">Mã CK</th>
                     <th style="width:220px;">Tên</th>
                     <th class="text-center" style="width:120px;">Ngành</th>
                     <th class="text-center" style="width:100px;">Giá</th>
                     <th class="text-center" style="width:120px;">% Thay đổi</th>
                     <th class="text-center" style="width:120px;">RSI</th>
                     <th class="text-center" style="width:160px;">Xu hướng MA</th>
-                    <th class="text-center" style="width:120px;">Tín hiệu</th>
+                    <th class="text-center" style="width:120px;">Dự đoán</th>
                     <th class="text-center" style="width:120px;">Yêu thích</th>
                     <th></th>
                 </tr>
@@ -158,7 +158,7 @@
                 <tbody>
                 <tr th:each="stock : ${stocks}">
                     <!-- Mã CK -->
-                    <td class="fw-bold" th:text="${stock['symbol']}"></td>
+                    <td class="fw-bold ps-3" th:text="${stock['symbol']}"></td>
                     
                     <!-- Tên -->
                     <td class="small text-muted" th:text="${stock['name']}"></td>
@@ -180,8 +180,8 @@
                     <td class="text-center fw-semibold">
                         <span th:if="${stock['changePct'] != null}">
                             <span th:with="chg=${stock['changePct']}"
-                                  th:classappend="${chg != null and #numbers.formatDecimal(chg,1,2).startsWith('-')} ? 'text-danger' : 'text-success'"
-                                  th:text="${(chg != null and !#numbers.formatDecimal(chg,1,2).startsWith('-')) ? '+' : ''} + ${#numbers.formatDecimal(chg, 1, 2)} + '%'">
+                                  th:classappend="${chg > 0} ? 'text-success' : (${chg < 0} ? 'text-danger' : 'text-warning')"
+                                  th:text="${chg > 0 ? '+' : ''} + ${#numbers.formatDecimal(chg, 1, 2)} + '%'">
                             </span>
                         </span>
                         <span th:unless="${stock['changePct'] != null}" class="text-muted">—</span>
@@ -208,11 +208,16 @@
                         <span th:unless="${stock['ma20'] != null}" class="text-muted">—</span>
                     </td>
 
-                    <!-- Signal -->
+                    <!-- Prediction -->
                     <td class="text-center align-middle">
                         <span class="badge rounded-pill px-3"
-                              th:classappend="${'BUY' == stock['signal']} ? 'bg-success' : (${'SELL' == stock['signal']} ? 'bg-danger' : 'bg-warning text-dark')"
-                              th:text="${stock['signal']}">
+                            th:classappend="${'TĂNG' == stock['signal']} ? 'bg-success' :
+                                           (${'GIẢM' == stock['signal']} ? 'bg-danger'  :
+                                           (${'GIỮ NGUYÊN'== stock['signal']} ? 'bg-warning text-dark' : 'bg-secondary'))">
+                                <i th:class="${'TĂNG' == stock['signal']} ? 'bi bi-graph-up-arrow me-1' :
+                                            (${'GIẢM' == stock['signal']} ? 'bi bi-graph-down-arrow me-1' :
+                                            (${'GIỮ NGUYÊN' == stock['signal']} ? 'bi bi-dash me-1' : ''))"></i>
+                            <span th:text="${stock['signal']}"></span>
                         </span>
                     </td>
 

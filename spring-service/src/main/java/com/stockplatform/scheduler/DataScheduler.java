@@ -1,24 +1,19 @@
 package com.stockplatform.scheduler;
 
-import com.stockplatform.service.PythonDataService;
+import java.util.Arrays;
+import java.util.List;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.stockplatform.service.PythonDataService;
 
-/**
- * Tự động fetch dữ liệu theo lịch.
- *
- * Tại sao cần scheduler?
- * - Thị trường VN đóng cửa lúc 15:00, dữ liệu cuối ngày available ~15:30
- * - Chạy lúc 18:00 mỗi ngày để đảm bảo có đủ dữ liệu
- * - ApplicationReadyEvent: fetch một lần lúc khởi động app (populate DB)
- */
 @Component
 public class DataScheduler {
 
@@ -26,8 +21,8 @@ public class DataScheduler {
 
     private final PythonDataService pythonDataService;
 
-    @Value("${app.watchlist}")
-    private String watchlistConfig;
+    @Value("${app.watchlist:VNM,VCB,HPG,FPT,MWG,TCB,VIC,ACB}")
+    private String defaultWatchlist;
 
     @Value("${app.scheduler.enabled:true}")
     private boolean schedulerEnabled;
@@ -37,44 +32,74 @@ public class DataScheduler {
     }
 
     /**
-     * Chạy một lần khi app khởi động.
-     * Delay 5 giây để Spring context ổn định trước.
+     * Fetch data cho default watchlist khi app khởi động xong.
+     * Chạy async để không block startup.
      */
+    @Async
     @EventListener(ApplicationReadyEvent.class)
-    public void onStartup() {
-        // Tắt auto-fetch khi startup để tránh conflict rate limit với /market endpoint
-        // Dữ liệu sẽ được fetch tự động lúc 18:00 hoặc khi user truy cập trang chi tiết
-        log.info("App started. Data will be fetched at 18:00 or when visiting stock detail pages.");
-        log.info("Python service status: {}", pythonDataService.isPythonServiceUp() ? "UP" : "DOWN");
+    public void fetchOnStartup() {
+        if (!schedulerEnabled) return;
+
+        // Chờ Python service sẵn sàng
+        boolean pythonUp = false;
+        for (int i = 0; i < 10; i++) {
+            if (pythonDataService.isPythonServiceUp()) {
+                pythonUp = true;
+                break;
+            }
+            log.info("Waiting for Python service... ({}/10)", i + 1);
+            try { Thread.sleep(3000); } catch (InterruptedException e) { return; }
+        }
+
+        if (!pythonUp) {
+            log.warn("Python service not available at startup. Data will be fetched on first visit.");
+            return;
+        }
+
+        log.info("Python service is UP. Fetching default watchlist data...");
+        List<String> symbols = Arrays.stream(defaultWatchlist.split(","))
+            .map(String::trim).toList();
+
+        for (String symbol : symbols) {
+            try {
+                pythonDataService.fetchAndSaveHistory(symbol, 90);
+                pythonDataService.fetchAndSaveSignal(symbol);
+                log.info("Loaded: {}", symbol);
+                Thread.sleep(2000); // rate limit
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (Exception e) {
+                log.warn("Failed to load {}: {}", symbol, e.getMessage());
+            }
+        }
+        log.info("Startup data fetch complete.");
     }
 
     /**
-     * Chạy lúc 18:00 mỗi ngày từ thứ 2 đến thứ 6.
-     * Cron format: giây phút giờ ngày tháng ngày-tuần
+     * Refresh signal mỗi 18:00 T2-T6 (sau khi thị trường đóng cửa).
      */
     @Scheduled(cron = "0 0 18 * * MON-FRI")
-    public void scheduledFetch() {
+    public void refreshDailySignals() {
         if (!schedulerEnabled) return;
-        if (!pythonDataService.isPythonServiceUp()) {
-            log.warn("Scheduled fetch skipped: Python service is down");
-            return;
-        }
-        log.info("Running scheduled data fetch...");
-        fetchAll();
-    }
+        if (!pythonDataService.isPythonServiceUp()) return;
 
-    private void fetchAll() {
-        List<String> symbols = List.of(watchlistConfig.split(","));
+        log.info("=== [Scheduler] Daily signal refresh ===");
+        List<String> symbols = Arrays.stream(defaultWatchlist.split(","))
+            .map(String::trim).toList();
+
         for (String symbol : symbols) {
             try {
-                log.info("Fetching data for {}", symbol);
-                pythonDataService.fetchAndSaveHistory(symbol.trim(), 90);
-                pythonDataService.fetchAndSaveSignal(symbol.trim());
-                Thread.sleep(500); // tránh spam API
+                pythonDataService.fetchAndSaveHistory(symbol, 90);
+                pythonDataService.fetchAndSaveSignal(symbol);
+                Thread.sleep(3000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
             } catch (Exception e) {
-                log.error("Error processing {}: {}", symbol, e.getMessage());
+                log.warn("Refresh failed for {}: {}", symbol, e.getMessage());
             }
         }
-        log.info("Data fetch complete for {} symbols.", symbols.size());
+        log.info("Daily refresh complete.");
     }
 }

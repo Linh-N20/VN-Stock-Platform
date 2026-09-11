@@ -12,7 +12,14 @@ public interface WatchedStockRepository extends JpaRepository<WatchedStock, Long
 
     Optional<WatchedStock> findBySymbol(String symbol);
 
-    // Lấy tối đa 20 cổ phiếu được xem gần nhất
-    @Query("SELECT w FROM WatchedStock w ORDER BY w.lastViewedAt DESC")
+    /**
+     * Lấy watchlist theo thứ tự:
+     * cổ phiếu được xem gần nhất → cổ phiếu cũ nhất.
+     */
+    @Query("""
+        SELECT w
+        FROM WatchedStock w
+        ORDER BY w.lastViewedAt DESC
+    """)
     List<WatchedStock> findRecentlyWatched();
 }

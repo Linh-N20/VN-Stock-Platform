@@ -45,7 +45,8 @@ public class SecurityConfig {
                     "/search", "/login",
                     "/css/**", "/js/**", "/images/**",
                     "/h2-console/**", "/error",
-                    "/api/favorites/check/**"  // check không cần login
+                    "/api/favorites/check/**", "/api/predict/history/**", 
+                    "/api/predict/accuracy/**", "api/company/**"
                 ).permitAll()
                 .requestMatchers("/profile", "/profile/**").authenticated()
                 .requestMatchers("/api/favorites/**").authenticated()

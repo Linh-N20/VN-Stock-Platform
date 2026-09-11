@@ -1,17 +1,18 @@
 package com.stockplatform;
 
-import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
+
+import io.github.cdimascio.dotenv.Dotenv;
 
 @SpringBootApplication
 @EnableScheduling
+@EnableAsync
 public class StockPlatformApplication {
 
     public static void main(String[] args) {
-        // Load file .env vào System properties trước khi Spring Boot khởi động
-        // ignoreIfMissing() → không crash nếu chạy trên server không có file .env
         Dotenv dotenv = Dotenv.configure()
             .ignoreIfMissing()
             .load();

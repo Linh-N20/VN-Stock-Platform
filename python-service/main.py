@@ -11,25 +11,31 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import numpy as np
+import os
 from datetime import datetime, timedelta
 from typing import Optional, List
 import logging
 import time
+from functools import lru_cache
 from stocks_list import STOCKS, SECTORS, get_stock_info
 
+# ── Logger ─────────────────────────────────────────────────────────────────────
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # ── In-memory cache ────────────────────────────────────────────────────────────
-_market_cache: dict = {}          # symbol -> row data
-_cache_time:   dict = {}          # symbol -> timestamp
-CACHE_TTL = 3600                  # 1 giờ — dữ liệu cuối ngày không cần refresh liên tục
+_market_cache: dict = {}
+_cache_time:   dict = {}
+CACHE_TTL = 3600
 
-from functools import lru_cache
-import time
+_history_cache: dict = {}
+_signal_cache:  dict = {}
+HISTORY_TTL = 3600
+SIGNAL_TTL  = 1800
 
-# ── In-memory cache với TTL ────────────────────────────────────────────────────
-_history_cache: dict = {}   # symbol -> {"data": df, "ts": timestamp}
-_signal_cache:  dict = {}   # symbol -> {"data": result, "ts": timestamp}
-HISTORY_TTL = 3600          # 1 giờ — dữ liệu lịch sử không đổi trong ngày
-SIGNAL_TTL  = 1800          # 30 phút — tín hiệu cần fresh hơn
+_intraday_cache = {}
+
+_orderbook_cache = {}
 
 def get_cached_history(symbol: str, days: int):
     """Lấy history từ cache nếu còn hạn."""
@@ -59,6 +65,54 @@ def set_cached_signal(symbol: str, result: dict):
     """Lưu signal vào cache."""
     _signal_cache[symbol] = {"data": result, "ts": time.time()}
 
+HNX_STOCKS = {
+    "SHB", "NVB", "BVS", "VCG", "PVI", "CEO", "HUT", "PVS",
+    "DGW", "VCS", "MBS", "SHS", "HLC", "NET", "TNG", "VGC",
+    "PLC", "HCD", "BCC", "VNR", "HBS", "PIV", "DTD", "SGT",
+    "CTX", "KLF", "BXH", "VNF", "IDJ", "VNT", "TH1", "HHG",
+}
+ 
+UPCOM_STOCKS = {
+    "OIL", "MVN", "LDG", "ASM", "HAH", "BSR", "PLX",
+    "MCH", "VEA", "ACV", "SBV", "VGI", "PTB", "FOX",
+}
+ 
+def detect_exchange(symbol: str) -> str:
+    """Detect sàn từ mã CK mà không cần gọi API."""
+    sym = symbol.upper().strip()
+    if sym in HNX_STOCKS:
+        return "HNX"
+    if sym in UPCOM_STOCKS:
+        return "UPCOM"
+    return "HoSE"  # mặc định
+ 
+def get_price_limits(symbol: str, ref_price: float) -> dict:
+    """Tính giá trần/sàn dựa trên sàn giao dịch."""
+    exchange = detect_exchange(symbol)
+ 
+    if exchange == "HNX":
+        pct = 0.10
+    elif exchange == "UPCOM":
+        pct = 0.15
+    else:
+        pct = 0.07
+ 
+    def round_price(p):
+        if p is None: return None
+        if p >= 50000: return round(p / 100) * 100
+        if p >= 10000: return round(p / 50)  * 50
+        return round(p / 10) * 10
+ 
+    ceiling = round_price(ref_price * (1 + pct)) if ref_price else None
+    floor   = round_price(ref_price * (1 - pct)) if ref_price else None
+ 
+    return {
+        "exchange": exchange,
+        "pctLimit": pct * 100,
+        "ceiling":  ceiling,
+        "floor":    floor,
+    }
+
 app = FastAPI(
     title="VNStock Data Service",
     description="Dữ liệu chứng khoán Việt Nam từ VCI",
@@ -75,7 +129,7 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DEFAULT_WATCHLIST = ["VNM", "VCB", "HPG", "FPT", "MWG", "TCB", "VIC", "ACB"]
+DEFAULT_WATCHLIST = ["VNM", "VCB", "HPG", "FPT", "MWG"]
 
 # Khởi tạo client một lần duy nhất — tránh tốn quota mỗi lần gọi
 _vnstock_client = None
@@ -164,43 +218,65 @@ def compute_indicators(df) -> dict:
     }
 
 
-def compute_signal(price, rsi_val, macd_val, prev_hist, curr_hist, ma20_val, ma50_val, bb_up_val, bb_dn_val):
-    """Tính điểm tín hiệu BUY/HOLD/SELL."""
-    score  = 0
-    reason = []
-
-    if rsi_val is not None:
-        if rsi_val < 30:
-            score += 2; reason.append(f"RSI={rsi_val:.1f} — vùng quá bán, khả năng phục hồi")
-        elif rsi_val > 70:
-            score -= 2; reason.append(f"RSI={rsi_val:.1f} — vùng quá mua, rủi ro điều chỉnh")
-        else:
-            reason.append(f"RSI={rsi_val:.1f} — vùng trung tính")
-
+def compute_signal(price, rsi, macd, prev_hist, curr_hist,
+                   ma20, ma50, bb_upper, bb_lower):
+    """
+    Tính tín hiệu dự đoán phiên hôm sau: TĂNG / GIẢM / GIỮ NGUYÊN.
+    Trả về (label, score, reason_string).
+    """
+    score   = 0
+    reasons = []
+ 
+    # RSI
+    if rsi is not None:
+        if rsi < 30:
+            score += 2; reasons.append(f"RSI={rsi:.1f} — vùng quá bán, dễ phục hồi")
+        elif rsi > 70:
+            score -= 2; reasons.append(f"RSI={rsi:.1f} — vùng quá mua, dễ điều chỉnh")
+        elif rsi > 55:
+            score += 1; reasons.append(f"RSI={rsi:.1f} — momentum tích cực")
+        elif rsi < 45:
+            score -= 1; reasons.append(f"RSI={rsi:.1f} — momentum yếu")
+ 
+    # MACD histogram crossover
     if curr_hist is not None and prev_hist is not None:
         if curr_hist > 0 and prev_hist <= 0:
-            score += 2; reason.append("MACD cắt lên signal line — tín hiệu tăng")
+            score += 3; reasons.append("MACD cắt lên — tín hiệu tăng mạnh")
         elif curr_hist < 0 and prev_hist >= 0:
-            score -= 2; reason.append("MACD cắt xuống signal line — tín hiệu giảm")
-        elif curr_hist > 0:
-            score += 1; reason.append("MACD dương — xu hướng tăng")
+            score -= 3; reasons.append("MACD cắt xuống — tín hiệu giảm mạnh")
+        elif curr_hist > prev_hist:
+            score += 1; reasons.append("MACD histogram tăng dần")
         else:
-            score -= 1; reason.append("MACD âm — xu hướng giảm")
-
-    if price and ma20_val and ma50_val:
-        if price > ma20_val > ma50_val:
-            score += 2; reason.append("Giá > MA20 > MA50 — uptrend rõ ràng")
-        elif price < ma20_val < ma50_val:
-            score -= 2; reason.append("Giá < MA20 < MA50 — downtrend rõ ràng")
-
-    if price and bb_up_val and bb_dn_val:
-        if price <= bb_dn_val:
-            score += 1; reason.append("Giá chạm dải dưới Bollinger — vùng hỗ trợ")
-        elif price >= bb_up_val:
-            score -= 1; reason.append("Giá chạm dải trên Bollinger — vùng kháng cự")
-
-    label = "BUY" if score >= 3 else ("SELL" if score <= -3 else "HOLD")
-    return label, score, reason
+            score -= 1; reasons.append("MACD histogram giảm dần")
+ 
+    # MA trend
+    if price and ma20 and ma50:
+        if price > ma20 > ma50:
+            score += 2; reasons.append("Giá > MA20 > MA50 — uptrend rõ ràng")
+        elif price < ma20 < ma50:
+            score -= 2; reasons.append("Giá < MA20 < MA50 — downtrend rõ ràng")
+        elif ma20 > ma50:
+            score += 1; reasons.append("MA20 > MA50 — xu hướng tăng trung hạn")
+ 
+    # Bollinger Bands
+    if price and bb_upper and bb_lower:
+        bb_range = bb_upper - bb_lower
+        if bb_range > 0:
+            bb_pct = (price - bb_lower) / bb_range
+            if bb_pct <= 0.1:
+                score += 2; reasons.append("Giá chạm dải dưới BB — vùng hỗ trợ")
+            elif bb_pct >= 0.9:
+                score -= 2; reasons.append("Giá chạm dải trên BB — vùng kháng cự")
+ 
+    # Xác định nhãn
+    if score >= 3:
+        label = "TĂNG"
+    elif score <= -3:
+        label = "GIẢM"
+    else:
+        label = "GIỮ NGUYÊN"
+ 
+    return label, score, "|".join(reasons)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -502,133 +578,302 @@ def search_stocks(q: str = Query(min_length=1, max_length=20)):
 
 @app.get("/stocks/intraday/{symbol}")
 def get_intraday(symbol: str):
-    """Giá realtime trong phiên + % thay đổi so với hôm qua."""
+    """
+    Giá realtime trong phiên + giá trần/sàn.
+
+    - Ưu tiên lấy dữ liệu mới từ VNStock/VCI.
+    - Nếu VCI timeout/lỗi -> dùng cache gần nhất nếu có.
+    - Nếu chưa có cache -> trả 503 thay vì 500.
+    """
+
     symbol = symbol.upper().strip()
+
     try:
-        from datetime import datetime as dt, timedelta, date as dt_date
-        stock = get_stock_client().stock(symbol=symbol, source="VCI")
+        from datetime import datetime as dt, timedelta
 
-        today     = dt.now().strftime("%Y-%m-%d")
-        week_ago  = (dt.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        stock = get_stock_client().stock(
+            symbol=symbol,
+            source="VCI"
+        )
 
-        df = stock.quote.history(start=week_ago, end=today, interval="1D")
+        today = dt.now().strftime("%Y-%m-%d")
+        week_ago = (
+            dt.now() - timedelta(days=7)
+        ).strftime("%Y-%m-%d")
+
+        df = stock.quote.history(
+            start=week_ago,
+            end=today,
+            interval="1D"
+        )
 
         if df is None or df.empty:
-            raise HTTPException(status_code=404, detail=f"Không có dữ liệu cho {symbol}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Không có dữ liệu cho {symbol}"
+            )
 
-        latest      = df.iloc[-1]
-        prev        = df.iloc[-2] if len(df) > 1 else latest
+        latest = df.iloc[-1]
+        prev = df.iloc[-2] if len(df) > 1 else latest
 
-        cur_price   = safe_float(latest.get("close"))
-        open_price  = safe_float(latest.get("open"))
-        high_price  = safe_float(latest.get("high"))
-        low_price   = safe_float(latest.get("low"))
-        volume      = safe_float(latest.get("volume"))
-        prev_close  = safe_float(prev.get("close"))
+        cur_price = safe_float(latest.get("close"))
+        open_price = safe_float(latest.get("open"))
+        high_price = safe_float(latest.get("high"))
+        low_price = safe_float(latest.get("low"))
+        volume = safe_float(latest.get("volume"))
+        ref_price = safe_float(prev.get("close"))
 
-        # Tham chiếu = giá đóng cửa hôm qua
-        ref_price   = prev_close
-        change      = round(cur_price - ref_price, 2)   if cur_price and ref_price else None
-        change_pct  = round(change / ref_price * 100, 2) if change and ref_price   else None
+        change = (
+            round(cur_price - ref_price, 2)
+            if cur_price is not None and ref_price is not None
+            else None
+        )
 
-        return {
-            "symbol":       symbol,
+        change_pct = (
+            round(change / ref_price * 100, 2)
+            if change is not None and ref_price
+            else None
+        )
+
+        # Giá trần / sàn
+        limits = get_price_limits(symbol, ref_price)
+
+        result = {
+            "symbol": symbol,
             "currentPrice": cur_price,
-            "openPrice":    open_price,
-            "highPrice":    high_price,
-            "lowPrice":     low_price,
-            "refPrice":     ref_price,
-            "change":       change,
-            "changePct":    change_pct,
-            "volume":       volume,
-            "date":         str(latest.get("time", today)),
-            "updatedAt":    dt.now().strftime("%H:%M:%S"),
-            "isTrading":    _is_trading_hours(),
+            "openPrice": open_price,
+            "highPrice": high_price,
+            "lowPrice": low_price,
+            "refPrice": ref_price,
+            "ceiling": limits["ceiling"],
+            "floor": limits["floor"],
+            "exchange": limits["exchange"],
+            "pctLimit": limits["pctLimit"],
+            "change": change,
+            "changePct": change_pct,
+            "volume": volume,
+            "date": str(latest.get("time", today)),
+            "updatedAt": dt.now().strftime("%H:%M:%S"),
+            "isTrading": _is_trading_hours(),
+            "fromCache": False,
         }
+
+        # ==========================================================
+        # LƯU CACHE
+        # ==========================================================
+        _intraday_cache[symbol] = result
+
+        return result
+
     except HTTPException:
         raise
+
     except Exception as e:
-        logger.error(f"Intraday error {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(
+            f"Intraday error {symbol}: {e}"
+        )
+
+        # ==========================================================
+        # FALLBACK CACHE
+        # ==========================================================
+        cached = _intraday_cache.get(symbol)
+
+        if cached is not None:
+            logger.warning(
+                f"Using cached intraday data for {symbol}"
+            )
+
+            cached_result = dict(cached)
+            cached_result["fromCache"] = True
+            cached_result["updatedAt"] = dt.now().strftime("%H:%M:%S")
+
+            return cached_result
+
+        # ==========================================================
+        # KHÔNG CÓ CACHE
+        # ==========================================================
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Dữ liệu intraday của {symbol} "
+                f"tạm thời không khả dụng. "
+                f"VNStock/VCI có thể đang timeout."
+            )
+        )
 
 
 @app.get("/stocks/orderbook/{symbol}")
 def get_orderbook(symbol: str):
     """
     Order book: top 3 lệnh mua (bid) và bán (ask).
-    Dùng price_depth nếu có, fallback về synthetic từ OHLC.
+    - Ưu tiên lấy order book thật bằng price_depth().
+    - Nếu price_depth() lỗi -> fallback sang synthetic order book từ OHLC.
+    - Nếu VCI timeout nhưng đã có cache -> trả cache.
+    - Nếu chưa có cache -> trả 503 thay vì 500.
     """
     symbol = symbol.upper().strip()
     try:
-        from datetime import datetime as dt, timedelta
-        stock = get_stock_client().stock(symbol=symbol, source="VCI")
+        stock = get_stock_client().stock(
+            symbol=symbol,
+            source="VCI"
+        )
 
-        # Thử lấy price_depth thực
+        # ============================================================
+        # 1. THỬ LẤY ORDER BOOK THẬT
+        # ============================================================
         try:
             df_depth = stock.quote.price_depth()
             if df_depth is not None and not df_depth.empty:
-                bids, asks = [], []
+                bids = []
+                asks = []
                 for _, row in df_depth.iterrows():
-                    side   = str(row.get("side", "")).upper()
-                    price  = safe_float(row.get("price"))
-                    volume = safe_float(row.get("volume"))
-                    if price and volume:
-                        item = {"price": price, "volume": volume}
+                    side = str(
+                        row.get("side", "")
+                    ).upper()
+                    price = safe_float(
+                        row.get("price")
+                    )
+                    volume = safe_float(
+                        row.get("volume")
+                    )
+                    if price is not None and volume is not None:
+
+                        item = {
+                            "price": price,
+                            "volume": volume
+                        }
                         if side in ("BID", "BUY", "MUA"):
                             bids.append(item)
                         elif side in ("ASK", "SELL", "BAN"):
                             asks.append(item)
-
-                bids.sort(key=lambda x: x["price"], reverse=True)
-                asks.sort(key=lambda x: x["price"])
+                # Bid: giá cao nhất trước
+                bids.sort(
+                    key=lambda x: x["price"],
+                    reverse=True
+                )
+                # Ask: giá thấp nhất trước
+                asks.sort(
+                    key=lambda x: x["price"]
+                )
 
                 if bids or asks:
-                    return {
-                        "symbol":    symbol,
-                        "bids":      bids[:3],
-                        "asks":      asks[:3],
-                        "updatedAt": dt.now().strftime("%H:%M:%S"),
+                    result = {
+                        "symbol": symbol,
+                        "bids": bids[:3],
+                        "asks": asks[:3],
+                        "updatedAt": datetime.now().strftime("%H:%M:%S"),
+                        "fromCache": False,
+                        "isRealOrderbook": True,
                     }
+
+                    # Lưu cache
+                    _orderbook_cache[symbol] = result
+                    return result
+
         except Exception as depth_err:
-            logger.warning(f"price_depth failed for {symbol}: {depth_err}")
+            logger.warning(
+                f"price_depth failed for {symbol}: "
+                f"{depth_err}"
+            )
 
-        # Fallback: synthetic order book từ OHLC
-        today    = dt.now().strftime("%Y-%m-%d")
-        week_ago = (dt.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-        df = stock.quote.history(start=week_ago, end=today, interval="1D")
+        # ============================================================
+        # 2. FALLBACK: SYNTHETIC ORDER BOOK TỪ OHLC
+        # ============================================================
 
+        today = datetime.now().strftime("%Y-%m-%d")
+        week_ago = (
+            datetime.now() - timedelta(days=7)
+        ).strftime("%Y-%m-%d")
+        df = stock.quote.history(
+            start=week_ago,
+            end=today,
+            interval="1D"
+        )
         if df is None or df.empty:
-            return {
-                "symbol":    symbol,
-                "bids":      [],
-                "asks":      [],
-                "note":      "Không có dữ liệu",
-                "updatedAt": dt.now().strftime("%H:%M:%S")
+            raise ValueError(
+                f"Không có dữ liệu OHLC cho {symbol}"
+            )
+        latest = df.iloc[-1]
+        cur_price = (safe_float(latest.get("close"))or 0)
+        vol = (safe_float(latest.get("volume"))or 100000)
+        if cur_price <= 0:
+            raise ValueError(
+                f"Giá hiện tại không hợp lệ cho {symbol}"
+            )
+
+        # Khoảng giá giả lập
+        tick = max(round(cur_price * 0.001, 2),0.01)
+
+        bids = [
+            {
+                "price": round(cur_price - tick * i, 2),
+                "volume": int(vol / (i + 2))
             }
+            for i in range(1, 4)
+        ]
 
-        latest    = df.iloc[-1]
-        cur_price = safe_float(latest.get("close")) or 0
-        vol       = safe_float(latest.get("volume")) or 100000
-        tick      = max(round(cur_price * 0.001, 2), 0.01)
-
-        bids = [{"price": round(cur_price - tick * i, 2), "volume": int(vol / (i + 2))}
-                for i in range(1, 4)]
-        asks = [{"price": round(cur_price + tick * i, 2), "volume": int(vol / (i + 2))}
-                for i in range(1, 4)]
-
-        return {
-            "symbol":    symbol,
-            "bids":      bids,
-            "asks":      asks,
-            "note":      "Dữ liệu ước tính (ngoài giờ giao dịch)",
-            "updatedAt": dt.now().strftime("%H:%M:%S"),
+        asks = [
+            {
+                "price": round(
+                    cur_price + tick * i,
+                    2
+                ),
+                "volume": int(
+                    vol / (i + 2)
+                )
+            }
+            for i in range(1, 4)
+        ]
+        result = {
+            "symbol": symbol,
+            "bids": bids,
+            "asks": asks,
+            "note": "Dữ liệu ước tính từ OHLC",
+            "updatedAt": datetime.now().strftime("%H:%M:%S"),
+            "fromCache": False,
+            "isRealOrderbook": False,
         }
+        # Lưu cache
+        _orderbook_cache[symbol] = result
+        return result
 
+    # ================================================================
+    # 3. HTTPException
+    # ================================================================
     except HTTPException:
         raise
+
+    # ================================================================
+    # 4. VCI / VNStock LỖI
+    # ================================================================
     except Exception as e:
-        logger.error(f"Orderbook error {symbol}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(
+            f"Orderbook error {symbol}: {e}"
+        )
+
+        # Có cache -> dùng dữ liệu cũ
+        cached = _orderbook_cache.get(symbol)
+        if cached is not None:
+            logger.warning(
+                f"Using cached orderbook for {symbol}"
+            )
+            cached_result = dict(cached)
+            cached_result["fromCache"] = True
+            cached_result["note"] = (
+                "Dữ liệu cache - "
+                "VNStock/VCI hiện không phản hồi"
+            )
+            return cached_result
+
+        # Không có cache
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Order book của {symbol} "
+                f"tạm thời không khả dụng. "
+                f"VNStock/VCI có thể đang timeout."
+            )
+        )
 
 
 def _is_trading_hours() -> bool:
@@ -847,3 +1092,595 @@ def get_company_profile(symbol: str):
     except Exception as e:
         logger.error(f"Company profile error {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PREDICTION ENDPOINT
+# Dự đoán Tăng/Giảm/Giữ phiên hôm sau dựa trên 3 thuật toán
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _predict_technical(df) -> tuple[str, float, list]:
+    """
+    Thuật toán 1: RSI + MACD + MA (đang có sẵn).
+    Trả về (label, confidence, reasons).
+    """
+    ind   = compute_indicators(df)
+    close = ind["close"]
+
+    rsi       = safe_float(ind["rsi"].iloc[-1])
+    macd      = safe_float(ind["macd"].iloc[-1])
+    macd_prev = safe_float(ind["macd"].iloc[-2]) if len(ind["macd"]) > 1 else None
+    hist      = safe_float(ind["hist"].iloc[-1])
+    hist_prev = safe_float(ind["hist"].iloc[-2]) if len(ind["hist"]) > 1 else None
+    ma20      = safe_float(ind["ma20"].iloc[-1])
+    ma50      = safe_float(ind["ma50"].iloc[-1])
+    price     = safe_float(close.iloc[-1])
+
+    score   = 0
+    reasons = []
+
+    # RSI signals
+    if rsi is not None:
+        if rsi < 30:
+            score += 2; reasons.append(f"RSI={rsi:.1f} vùng quá bán → phục hồi")
+        elif rsi > 70:
+            score -= 2; reasons.append(f"RSI={rsi:.1f} vùng quá mua → điều chỉnh")
+        elif rsi > 55:
+            score += 1; reasons.append(f"RSI={rsi:.1f} momentum tích cực")
+        elif rsi < 45:
+            score -= 1; reasons.append(f"RSI={rsi:.1f} momentum yếu")
+
+    # MACD crossover
+    if hist is not None and hist_prev is not None:
+        if hist > 0 and hist_prev <= 0:
+            score += 3; reasons.append("MACD cắt lên → tín hiệu tăng mạnh")
+        elif hist < 0 and hist_prev >= 0:
+            score -= 3; reasons.append("MACD cắt xuống → tín hiệu giảm mạnh")
+        elif hist > 0 and hist > hist_prev:
+            score += 1; reasons.append("MACD histogram đang tăng")
+        elif hist < 0 and hist < hist_prev:
+            score -= 1; reasons.append("MACD histogram đang giảm")
+
+    # MA trend
+    if price and ma20 and ma50:
+        if price > ma20 > ma50:
+            score += 2; reasons.append("Giá > MA20 > MA50 → uptrend")
+        elif price < ma20 < ma50:
+            score -= 2; reasons.append("Giá < MA20 < MA50 → downtrend")
+
+    if score >= 3:   return "TĂNG",   min(0.5 + score*0.05, 0.85), reasons
+    if score <= -3:  return "GIẢM",   min(0.5 + abs(score)*0.05, 0.85), reasons
+    return "GIỮ NGUYÊN", 0.5 + abs(score)*0.02, reasons
+
+
+def _predict_extended(df) -> tuple[str, float, list]:
+    """
+    Thuật toán 2: Bollinger Bands + Volume + momentum ngắn hạn.
+    """
+    ind     = compute_indicators(df)
+    close   = ind["close"]
+    price   = safe_float(close.iloc[-1])
+    bb_up   = safe_float(ind["bb_up"].iloc[-1])
+    bb_dn   = safe_float(ind["bb_dn"].iloc[-1])
+    bb_mid  = safe_float(ind["ma20"].iloc[-1])
+
+    # Volume trend (3 ngày gần nhất)
+    vol_col = "volume" if "volume" in df.columns else None
+    vol_trend = 0
+    if vol_col and len(df) >= 3:
+        vols = df[vol_col].astype(float).tail(3).values
+        vol_avg = df[vol_col].astype(float).tail(10).mean()
+        if vols[-1] > vol_avg * 1.5:
+            vol_trend = 1 if close.pct_change().iloc[-1] > 0 else -1
+
+    # Momentum 5 ngày
+    mom5 = None
+    if len(close) >= 5:
+        mom5 = (price - safe_float(close.iloc[-5])) / safe_float(close.iloc[-5]) * 100
+
+    score   = 0
+    reasons = []
+
+    # Bollinger Bands
+    if price and bb_up and bb_dn and bb_mid:
+        bb_pct = (price - bb_dn) / (bb_up - bb_dn) if bb_up != bb_dn else 0.5
+        if bb_pct <= 0.1:
+            score += 2; reasons.append("Giá chạm dải dưới BB → hỗ trợ mạnh")
+        elif bb_pct >= 0.9:
+            score -= 2; reasons.append("Giá chạm dải trên BB → kháng cự mạnh")
+        elif bb_pct > 0.6:
+            score += 1; reasons.append("Giá trong vùng trên BB → tích cực")
+        elif bb_pct < 0.4:
+            score -= 1; reasons.append("Giá trong vùng dưới BB → tiêu cực")
+
+    # Volume
+    if vol_trend == 1:
+        score += 1; reasons.append("Volume tăng kèm giá tăng → xác nhận")
+    elif vol_trend == -1:
+        score -= 1; reasons.append("Volume tăng kèm giá giảm → bán tháo")
+
+    # Momentum
+    if mom5 is not None:
+        if mom5 > 3:
+            score += 1; reasons.append(f"Momentum 5 ngày +{mom5:.1f}% tích cực")
+        elif mom5 < -3:
+            score -= 1; reasons.append(f"Momentum 5 ngày {mom5:.1f}% tiêu cực")
+
+    if score >= 2:   return "TĂNG",      min(0.5 + score*0.06, 0.82), reasons
+    if score <= -2:  return "GIẢM",      min(0.5 + abs(score)*0.06, 0.82), reasons
+    return "GIỮ NGUYÊN", 0.5 + abs(score)*0.02, reasons
+
+
+def _predict_ml(df) -> tuple[str, float, list]:
+    """
+    Thuật toán 3: Linear Regression trên các features kỹ thuật.
+    Predict % change ngày mai dựa trên pattern 30 ngày qua.
+    """
+    try:
+        import numpy as np
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.preprocessing import StandardScaler
+
+        if len(df) < 30:
+            return "GIỮ NGUYÊN", 0.5, ["Không đủ dữ liệu cho ML"]
+
+        close = df["close"].astype(float).values
+
+        # Features: returns 1,2,3,5 ngày + RSI-like + momentum
+        def make_features(closes):
+            features = []
+            for i in range(5, len(closes)):
+                r1 = (closes[i] - closes[i-1]) / closes[i-1]
+                r2 = (closes[i] - closes[i-2]) / closes[i-2]
+                r3 = (closes[i] - closes[i-3]) / closes[i-3]
+                r5 = (closes[i] - closes[i-5]) / closes[i-5]
+                # Volatility 5 ngày
+                vol5 = float(np.std(closes[i-5:i]) / closes[i])
+                # MA ratio
+                ma5  = float(np.mean(closes[i-5:i]) / closes[i])
+                ma10 = float(np.mean(closes[i-10:i]) / closes[i]) if i >= 10 else ma5
+                features.append([r1, r2, r3, r5, vol5, ma5, ma10])
+            return np.array(features)
+
+        X = make_features(close)
+        # Label: ngày mai tăng (1) / giảm (-1) / giữ (0)
+        labels = []
+        for i in range(5, len(close) - 1):
+            ret = (close[i+1] - close[i]) / close[i] * 100
+            if ret > 0.5:   labels.append(1)
+            elif ret < -0.5: labels.append(-1)
+            else:            labels.append(0)
+
+        if len(labels) < 20 or len(X) < len(labels):
+            return "GIỮ NGUYÊN", 0.5, ["Không đủ dữ liệu ML"]
+
+        X_train = X[:len(labels)]
+        y_train = labels
+
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X_train)
+
+        model = LogisticRegression(max_iter=200, C=0.5)
+        model.fit(X_scaled, y_train)
+
+        # Predict cho ngày mai (dùng feature của ngày hôm nay)
+        X_pred   = scaler.transform(X[-1:])
+        pred     = model.predict(X_pred)[0]
+        proba    = model.predict_proba(X_pred)[0]
+        confidence = float(max(proba))
+
+        label_map = {1: "TĂNG", -1: "GIẢM", 0: "GIỮ NGUYÊN"}
+        label     = label_map.get(pred, "GIỮ NGUYÊN")
+        reasons   = [f"ML dự đoán: {label} (confidence: {confidence:.0%})"]
+
+        return label, confidence, reasons
+
+    except ImportError:
+        return "GIỮ NGUYÊN", 0.5, ["scikit-learn chưa cài (pip install scikit-learn)"]
+    except Exception as e:
+        return "GIỮ NGUYÊN", 0.5, [f"ML error: {str(e)[:50]}"]
+
+
+@app.get("/stocks/predict/{symbol}")
+def predict_next_session(symbol: str, days: int = Query(default=90, ge=30, le=365)):
+    """
+    Dự đoán Tăng/Giảm/Giữ nguyên phiên giao dịch hôm sau.
+    Kết hợp 3 thuật toán: Technical + Extended + ML.
+    """
+    symbol = symbol.upper().strip()
+    try:
+        from datetime import datetime as dt
+
+        df = fetch_history_df(symbol, days)
+        if df is None or df.empty or len(df) < 15:
+            raise HTTPException(status_code=404, detail="Không đủ dữ liệu để dự đoán")
+
+        # Chạy 3 thuật toán
+        label1, conf1, reasons1 = _predict_technical(df)
+        label2, conf2, reasons2 = _predict_extended(df)
+        label3, conf3, reasons3 = _predict_ml(df)
+
+        # Ensemble: vote có trọng số (technical:3, extended:2, ml:4)
+        weights = {"technical": 3, "extended": 2, "ml": 4}
+        votes   = {"TĂNG": 0.0, "GIẢM": 0.0, "GIỮ NGUYÊN": 0.0}
+
+        votes[label1] += weights["technical"] * conf1
+        votes[label2] += weights["extended"]  * conf2
+        votes[label3] += weights["ml"]        * conf3
+
+        total          = sum(votes.values())
+        final_label    = max(votes, key=votes.get)
+        final_conf     = votes[final_label] / total if total > 0 else 0.5
+
+        # Tất cả reasons
+        all_reasons = (
+            ["Technical Analysis:"] + reasons1 +
+            ["Extended Indicators:"] + reasons2 +
+            ["Machine Learning:"]    + reasons3
+        )
+
+        return {
+            "symbol":      symbol,
+            "prediction":  final_label,         # "TĂNG" / "GIẢM" / "GIỮ NGUYÊN"
+            "confidence":  round(final_conf, 3),
+            "confidencePct": round(final_conf * 100, 1),
+            "models": {
+                "technical": {"label": label1, "confidence": round(conf1, 3)},
+                "extended":  {"label": label2, "confidence": round(conf2, 3)},
+                "ml":        {"label": label3, "confidence": round(conf3, 3)},
+            },
+            "reasons":     all_reasons,
+            "predictedAt": dt.now().isoformat(),
+            "forDate":     (dt.now()).strftime("%Y-%m-%d"),  # ngày dự đoán cho
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Predict error {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+import os, pickle
+import numpy as np
+ 
+MODEL_PATH = "ml_model.pkl"
+_online_model = None
+_online_scaler = None
+_training_buffer = []   # buffer lưu (features, label) chờ retrain
+RETRAIN_THRESHOLD = 10  # retrain mỗi khi có thêm 10 mẫu mới
+ 
+ 
+def _load_or_init_model():
+    """Load model từ file hoặc khởi tạo mới."""
+    global _online_model, _online_scaler
+    if os.path.exists(MODEL_PATH):
+        try:
+            with open(MODEL_PATH, "rb") as f:
+                data = pickle.load(f)
+                _online_model  = data["model"]
+                _online_scaler = data["scaler"]
+                logger.info(f"Loaded ML model from {MODEL_PATH}")
+                return
+        except Exception as e:
+            logger.warning(f"Cannot load model: {e}")
+ 
+    # Khởi tạo mới
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+    _online_model  = LogisticRegression(max_iter=500, C=0.5)
+    _online_scaler = StandardScaler()
+    logger.info("Initialized new ML model")
+ 
+ 
+def _save_model():
+    """Lưu model vào file."""
+    try:
+        with open(MODEL_PATH, "wb") as f:
+            pickle.dump({"model": _online_model, "scaler": _online_scaler}, f)
+        logger.info("Saved ML model")
+    except Exception as e:
+        logger.error(f"Cannot save model: {e}")
+ 
+ 
+def add_training_sample(features: list, label: str):
+    """
+    Thêm 1 mẫu training mới (gọi sau khi verify kết quả thực tế).
+    features: [r1, r2, r3, r5, vol5, ma5, ma10]
+    label: "TĂNG" / "GIẢM" / "GIỮ NGUYÊN"
+    """
+    global _training_buffer
+    label_map = {"TĂNG": 1, "GIẢM": -1, "GIỮ NGUYÊN": 0}
+    y = label_map.get(label, 0)
+    _training_buffer.append((features, y))
+ 
+    # Retrain khi đủ mẫu
+    if len(_training_buffer) >= RETRAIN_THRESHOLD:
+        _retrain()
+ 
+ 
+def _retrain():
+    """Retrain model với toàn bộ buffer."""
+    global _training_buffer, _online_model, _online_scaler
+    if len(_training_buffer) < 5:
+        return
+ 
+    try:
+        X = np.array([s[0] for s in _training_buffer])
+        y = np.array([s[1] for s in _training_buffer])
+ 
+        _online_scaler.fit(X)
+        X_scaled = _online_scaler.transform(X)
+        _online_model.fit(X_scaled, y)
+        _save_model()
+ 
+        logger.info(f"Retrained ML model with {len(_training_buffer)} samples")
+        _training_buffer = []  # reset buffer
+    except Exception as e:
+        logger.error(f"Retrain error: {e}")
+ 
+ 
+# Load model khi khởi động
+_load_or_init_model()
+
+@app.post("/ml/feedback")
+def ml_feedback(data: dict):
+    """
+    Nhận kết quả thực tế để model tự học.
+    Body: {"symbol": "FPT", "features": [...], "actual": "TĂNG"}
+    Gọi từ Spring Boot Scheduler sau khi verify prediction.
+    """
+    try:
+        symbol   = data.get("symbol", "").upper()
+        features = data.get("features", [])
+        actual   = data.get("actual", "")
+ 
+        if not features or not actual:
+            raise HTTPException(status_code=400, detail="Thiếu features hoặc actual")
+ 
+        add_training_sample(features, actual)
+ 
+        return {
+            "status":        "ok",
+            "symbol":        symbol,
+            "actual":        actual,
+            "bufferSize":    len(_training_buffer),
+            "willRetrain":   len(_training_buffer) >= RETRAIN_THRESHOLD,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+ 
+ 
+@app.get("/ml/status")
+def ml_status():
+    """Trạng thái model ML."""
+    return {
+        "modelLoaded":    _online_model is not None,
+        "modelPath":      MODEL_PATH,
+        "modelExists":    os.path.exists(MODEL_PATH),
+        "bufferSize":     len(_training_buffer),
+        "retrainAt":      RETRAIN_THRESHOLD,
+    }
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BACKTEST + AUTO TRAIN
+# Paste vào cuối main.py
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/ml/backtest/{symbol}")
+def backtest_and_train(
+    symbol: str,
+    days:   int = Query(default=90, ge=30, le=365)
+):
+    """
+    Chạy backtest trên dữ liệu lịch sử:
+    1. Với mỗi ngày trong quá khứ → tạo dự đoán
+    2. So sánh với giá thực tế ngày hôm sau
+    3. Dùng kết quả để train ML model
+    4. Trả về accuracy report
+    """
+    symbol = symbol.upper().strip()
+    try:
+        import numpy as np
+        from datetime import datetime as dt
+
+        df = fetch_history_df(symbol, days)
+        if df is None or df.empty or len(df) < 30:
+            raise HTTPException(status_code=404,
+                detail="Không đủ dữ liệu để backtest")
+
+        close_col  = "close"
+        closes     = df[close_col].astype(float).values
+        n          = len(closes)
+
+        results    = []
+        X_train    = []
+        y_train    = []
+
+        # Duyệt từng ngày, dùng 20 ngày trước đó để predict ngày tiếp theo
+        window = 20
+        for i in range(window, n - 1):
+            sub_df = df.iloc[:i+1].copy()
+
+            # Tính features
+            try:
+                ind = compute_indicators(sub_df)
+
+                rsi       = safe_float(ind["rsi"].iloc[-1])
+                macd_val  = safe_float(ind["macd"].iloc[-1])
+                prev_hist = safe_float(ind["hist"].iloc[-2]) if len(ind["hist"]) > 1 else None
+                curr_hist = safe_float(ind["hist"].iloc[-1])
+                ma20      = safe_float(ind["ma20"].iloc[-1])
+                ma50      = safe_float(ind["ma50"].iloc[-1])
+                bb_up     = safe_float(ind["bb_up"].iloc[-1])
+                bb_dn     = safe_float(ind["bb_dn"].iloc[-1])
+                price     = closes[i]
+
+                # Prediction từ technical signal
+                label, score, _ = compute_signal(
+                    price, rsi, macd_val, prev_hist, curr_hist,
+                    ma20, ma50, bb_up, bb_dn
+                )
+
+                # Kết quả thực tế ngày hôm sau
+                next_price  = closes[i + 1]
+                change_pct  = (next_price - price) / price * 100
+
+                if change_pct > 0.5:
+                    actual = "TĂNG"
+                elif change_pct < -0.5:
+                    actual = "GIẢM"
+                else:
+                    actual = "GIỮ NGUYÊN"
+
+                is_correct = label == actual
+
+                # Features cho ML
+                r1   = (closes[i] - closes[i-1]) / closes[i-1] if i > 0 else 0
+                r2   = (closes[i] - closes[i-2]) / closes[i-2] if i > 1 else 0
+                r3   = (closes[i] - closes[i-3]) / closes[i-3] if i > 2 else 0
+                r5   = (closes[i] - closes[i-5]) / closes[i-5] if i > 4 else 0
+                vol5 = float(np.std(closes[max(0,i-5):i+1]) / closes[i]) if closes[i] else 0
+                ma5  = float(np.mean(closes[max(0,i-5):i+1]) / closes[i]) if closes[i] else 1
+                ma10 = float(np.mean(closes[max(0,i-10):i+1]) / closes[i]) if closes[i] else 1
+                rsi_n = (rsi or 50) / 100
+                macd_n = min(max((macd_val or 0) / (price * 0.01), -1), 1)
+
+                features = [r1, r2, r3, r5, vol5, ma5, ma10, rsi_n, macd_n]
+                X_train.append(features)
+
+                label_map = {"TĂNG": 1, "GIẢM": -1, "GIỮ NGUYÊN": 0}
+                y_train.append(label_map.get(actual, 0))
+
+                results.append({
+                    "date":       str(df.index[i]) if hasattr(df.index[i], 'strftime')
+                                  else str(df.iloc[i].get("time", i)),
+                    "prediction": label,
+                    "actual":     actual,
+                    "changePct":  round(change_pct, 2),
+                    "correct":    is_correct,
+                })
+
+            except Exception as e:
+                logger.warning(f"Backtest skip day {i}: {e}")
+                continue
+
+        if not results:
+            raise HTTPException(status_code=500, detail="Backtest không ra kết quả")
+
+        # ── Train ML model từ backtest data ───────────────────────────────
+        if len(X_train) >= 20:
+            try:
+                import numpy as np
+                from sklearn.linear_model import LogisticRegression
+                from sklearn.preprocessing import StandardScaler
+                from sklearn.model_selection import cross_val_score
+
+                X = np.array(X_train)
+                y = np.array(y_train)
+
+                scaler = StandardScaler()
+                X_scaled = scaler.fit_transform(X)
+
+                model = LogisticRegression(max_iter=500, C=0.5, class_weight='balanced')
+                model.fit(X_scaled, y)
+
+                # Cross-validation accuracy
+                cv_scores = cross_val_score(model, X_scaled, y, cv=5)
+                cv_acc    = float(cv_scores.mean())
+
+                # Lưu model
+                global _online_model, _online_scaler
+                _online_model  = model
+                _online_scaler = scaler
+                _save_model()
+
+                ml_trained = True
+                ml_cv_acc  = round(cv_acc * 100, 1)
+                logger.info(f"Trained ML model from backtest: CV acc={ml_cv_acc}%")
+
+            except Exception as e:
+                ml_trained = False
+                ml_cv_acc  = 0
+                logger.error(f"ML training error: {e}")
+        else:
+            ml_trained = False
+            ml_cv_acc  = 0
+
+        # ── Thống kê kết quả backtest ──────────────────────────────────────
+        total   = len(results)
+        correct = sum(1 for r in results if r["correct"])
+        accuracy = round(correct / total * 100, 1) if total > 0 else 0
+
+        # Accuracy theo từng label
+        for lbl in ["TĂNG", "GIẢM", "GIỮ NGUYÊN"]:
+            subset  = [r for r in results if r["prediction"] == lbl]
+            correct_subset = sum(1 for r in subset if r["correct"])
+            pct = round(correct_subset / len(subset) * 100, 1) if subset else 0
+            logger.info(f"  {lbl}: {correct_subset}/{len(subset)} = {pct}%")
+
+        tang_res  = [r for r in results if r["prediction"] == "TĂNG"]
+        giam_res  = [r for r in results if r["prediction"] == "GIẢM"]
+        giu_res   = [r for r in results if r["prediction"] == "GIỮ NGUYÊN"]
+
+        def acc_stats(subset):
+            if not subset: return {"total": 0, "correct": 0, "accuracy": 0}
+            c = sum(1 for r in subset if r["correct"])
+            return {"total": len(subset), "correct": c,
+                    "accuracy": round(c/len(subset)*100, 1)}
+
+        return {
+            "symbol":   symbol,
+            "days":     days,
+            "total":    total,
+            "correct":  correct,
+            "accuracy": accuracy,
+            "byLabel": {
+                "TĂNG":       acc_stats(tang_res),
+                "GIẢM":       acc_stats(giam_res),
+                "GIỮ NGUYÊN": acc_stats(giu_res),
+            },
+            "mlTrained":  ml_trained,
+            "mlCvAccuracy": ml_cv_acc,
+            "sampleResults": results[-10:],  # 10 kết quả gần nhất
+            "backtestAt": dt.now().isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Backtest error {symbol}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ml/backtest-all")
+def backtest_all(days: int = Query(default=90, ge=30, le=180)):
+    """
+    Chạy backtest cho tất cả mã trong cache → train model tổng hợp.
+    Gọi 1 lần để khởi động model, sau đó model tự cải thiện dần.
+    """
+    from datetime import datetime as dt
+    cached_symbols = list(_history_cache.keys())
+
+    if not cached_symbols:
+        return {"message": "Chưa có symbol trong cache. Hãy vào xem một số cổ phiếu trước."}
+
+    results = {}
+    for key in cached_symbols[:10]:  # Tối đa 10 mã để tránh timeout
+        symbol = key.split("_")[0]
+        try:
+            result = backtest_and_train(symbol, days=days)
+            results[symbol] = {
+                "accuracy":   result["accuracy"],
+                "total":      result["total"],
+                "mlTrained":  result["mlTrained"],
+            }
+        except Exception as e:
+            results[symbol] = {"error": str(e)}
+
+    return {
+        "backtestAt": dt.now().isoformat(),
+        "symbols":    results,
+        "mlModelPath": MODEL_PATH,
+    }
